@@ -3,42 +3,27 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>KLAP_DEGI_LAPTIMER - V12.3</title>
+    <title>KLAP_DEGI_LAPTIMER - V12.4</title>
     <style>
         :root { --hrc-red: #E4002B; --hrc-white: #ffffff; --bg-dark: #000000; --hrc-orange: #FFA500; }
         body, html { margin: 0; padding: 0; width: 100%; height: 100%; background-color: var(--bg-dark); color: var(--hrc-white); font-family: 'Arial Black', sans-serif; overflow: hidden; }
         #dashboard { position: relative; width: 100vw; height: 100dvh; }
         
-        /* メインUI：全体を少し上に上げる */
-        .main-ui-container { 
-            position: absolute; 
-            left: 32%; 
-            top: 42%; /* 48%から42%へ引き上げ */
-            transform: translate(-50%, -50%); 
-            display: flex; 
-            flex-direction: column; 
-            align-items: center; 
-            z-index: 5; 
-            width: 60%; 
-        }
-        
-        /* ラップ表示 */
+        /* メインUI */
+        .main-ui-container { position: absolute; left: 32%; top: 42%; transform: translate(-50%, -50%); display: flex; flex-direction: column; align-items: center; z-index: 5; width: 60%; }
         #display1 { font-size: 19vh; font-weight: 900; line-height: 0.8; white-space: nowrap; }
 
-        /* セクター表示 */
-        #sector-container { display: flex; justify-content: center; gap: 25px; font-size: 5vh; font-weight: 900; margin-top: 2vh; }
-        .sec-name { color: var(--hrc-red); margin-right: 4px; font-size: 2.2vh; }
+        /* セクター表示：サイズアップ */
+        #sector-container { display: flex; justify-content: center; gap: 25px; font-size: 6vh; font-weight: 900; margin-top: 2vh; }
+        .sec-name { color: var(--hrc-red); margin-right: 6px; font-size: 2.8vh; }
 
-        /* 下段情報：TOTALとBESTの距離を離す */
-        .sub-times { display: flex; flex-direction: column; align-items: center; margin-top: 4vh; gap: 2.5vh; } /* gapを広げた */
-        
+        /* 下段情報 */
+        .sub-times { display: flex; flex-direction: column; align-items: center; margin-top: 4vh; gap: 2.5vh; }
         #display { font-size: 3.5vh; color: #fff; font-weight: 900; opacity: 0.8; }
-        
-        /* BEST：さらに大きく */
         #best-display { font-size: 9.5vh; color: #fff; font-weight: 900; line-height: 0.9; }
         .best-label { font-size: 2.2vh; color: var(--hrc-red); margin-right: 15px; vertical-align: middle; }
 
-        /* 右側パネル（右寄せ・コンパクト） */
+        /* 右側パネル */
         .right-section-wrapper { position: absolute; right: 10px; top: 15px; bottom: 75px; display: flex; gap: 15px; align-items: flex-start; }
         #lap-panel { width: 150px; height: 100%; display: flex; flex-direction: column; }
         #lap { flex: 1; overflow-y: auto; scrollbar-width: none; text-align: right; }
@@ -53,24 +38,23 @@
         button { flex: 1; background: #111; color: #fff; border: 1px solid #333; border-radius: 4px; font-size: 10px; font-weight: bold; }
         button.active { background: var(--hrc-red) !important; }
 
-        #history-page { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: #000; z-index: 2000; padding: 20px; }
-        .close-btn { background: var(--hrc-red); padding: 15px; text-align: center; font-weight: bold; margin-bottom: 10px; }
+        /* HISTORY ページ */
+        #history-page { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: #000; z-index: 2000; padding: 20px; box-sizing: border-box; }
+        .close-btn { background: var(--hrc-red); padding: 15px; text-align: center; font-weight: bold; margin-bottom: 10px; cursor: pointer; }
+        #history-table { width: 100%; border-collapse: collapse; text-align: center; font-size: 14px; }
+        #history-table th { color: var(--hrc-red); border-bottom: 2px solid var(--hrc-red); padding: 8px; }
+        #history-table td { padding: 8px; border-bottom: 1px solid #222; }
     </style>
 </head>
 <body>
 <div id="dashboard">
     <div class="main-ui-container">
-        <!-- メインラップ -->
         <div id="display1">00:00.000</div>
-        
-        <!-- セクター -->
         <div id="sector-container">
             <span class="sec-item"><span class="sec-name">S1:</span><span id="s1_val">--.---</span></span>
             <span class="sec-item"><span class="sec-name">S2:</span><span id="s2_val">--.---</span></span>
             <span class="sec-item"><span class="sec-name">S3:</span><span id="s3_val">--.---</span></span>
         </div>
-
-        <!-- 下段 -->
         <div class="sub-times">
             <div id="display">TOTAL 00:00.000</div>
             <div id="best-display"><span class="best-label">BEST LAP</span>00:00.000</div>
@@ -101,15 +85,23 @@
 <div id="history-page">
     <div class="close-btn" onclick="document.getElementById('history-page').style.display='none'">CLOSE</div>
     <div style="overflow-y: auto; height: calc(100% - 80px);">
-        <table id="history-table" style="width:100%; border-collapse:collapse; text-align:center;">
-            <thead><tr><th style="color:var(--hrc-red); border-bottom:2px solid var(--hrc-red);">LAP</th><th>S1</th><th>S2</th><th>S3</th><th>TIME</th></tr></thead>
+        <table id="history-table">
+            <thead>
+                <tr>
+                    <th>LAP</th>
+                    <th>S1</th>
+                    <th>S2</th>
+                    <th>S3</th>
+                    <th>TIME</th>
+                    <th style="color:var(--hrc-orange);">MAX</th>
+                </tr>
+            </thead>
             <tbody id="history-body"></tbody>
         </table>
     </div>
 </div>
 
 <script>
-/* 走行ログ記録・判定・GPX機能は完全維持 */
 'use strict';
 let swState = 0, startTime = 0, lapStartTime = 0, lapRecords = [], gpsPoints = [];
 let device = null, nmeaBuffer = '', lastPos = null;
@@ -120,9 +112,13 @@ let s1_abs = 0, s2_abs = 0, s3_abs = 0;
 
 function processLap(hitTime, isManual = false) {
     const lapTimeMs = hitTime - (lapStartTime || startTime);
+    // ラップデータを保存（MAX速度を含む）
     const lapData = { 
-        no: lapRecords.length + 1, time: lapTimeMs, max: Math.round(maxSpeedInLap), 
-        s1: document.getElementById('s1_val').textContent, s2: document.getElementById('s2_val').textContent, 
+        no: lapRecords.length + 1, 
+        time: lapTimeMs, 
+        max: Math.round(maxSpeedInLap), 
+        s1: document.getElementById('s1_val').textContent, 
+        s2: document.getElementById('s2_val').textContent, 
         s3: document.getElementById('s3_val').textContent
     };
     lapRecords.unshift(lapData);
@@ -229,7 +225,15 @@ document.getElementById('usbGpsBtn').onclick = async function() {
 document.getElementById('historyBtn').onclick = function() {
     if (lapRecords.length === 0) return;
     const bT = Math.min(...lapRecords.map(r => r.time));
-    document.getElementById('history-body').innerHTML = lapRecords.map(r => `<tr><td>${r.no}</td><td>${r.s1}</td><td>${r.s2}</td><td>${r.s3}</td><td style="${r.time===bT?'color:var(--hrc-red);':''}">${timeFormat(r.time)}</td></tr>`).join('');
+    document.getElementById('history-body').innerHTML = lapRecords.map(r => `
+        <tr>
+            <td>${r.no}</td>
+            <td>${r.s1}</td>
+            <td>${r.s2}</td>
+            <td>${r.s3}</td>
+            <td style="${r.time===bT?'color:var(--hrc-red);font-weight:bold;':''}">${timeFormat(r.time)}</td>
+            <td style="color:var(--hrc-orange);">${r.max}</td>
+        </tr>`).join('');
     document.getElementById('history-page').style.display = 'block';
 };
 
