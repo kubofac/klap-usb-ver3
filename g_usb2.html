@@ -3,21 +3,40 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>KLAP_DEGI_LAPTIMER - V12.2</title>
+    <title>KLAP_DEGI_LAPTIMER - V12.3</title>
     <style>
         :root { --hrc-red: #E4002B; --hrc-white: #ffffff; --bg-dark: #000000; --hrc-orange: #FFA500; }
         body, html { margin: 0; padding: 0; width: 100%; height: 100%; background-color: var(--bg-dark); color: var(--hrc-white); font-family: 'Arial Black', sans-serif; overflow: hidden; }
-        #dashboard { position: relative; width: 100vw; height: 100dvh; background: var(--bg-dark); }
+        #dashboard { position: relative; width: 100vw; height: 100dvh; }
         
-        /* メインUI */
-        .main-ui-container { position: absolute; left: 32%; top: 48%; transform: translate(-50%, -50%); display: flex; flex-direction: column; align-items: center; z-index: 5; width: 60%; }
+        /* メインUI：全体を少し上に上げる */
+        .main-ui-container { 
+            position: absolute; 
+            left: 32%; 
+            top: 42%; /* 48%から42%へ引き上げ */
+            transform: translate(-50%, -50%); 
+            display: flex; 
+            flex-direction: column; 
+            align-items: center; 
+            z-index: 5; 
+            width: 60%; 
+        }
+        
+        /* ラップ表示 */
         #display1 { font-size: 19vh; font-weight: 900; line-height: 0.8; white-space: nowrap; }
-        #sector-container { display: flex; justify-content: center; gap: 25px; font-size: 5vh; font-weight: 900; margin-top: 3vh; }
+
+        /* セクター表示 */
+        #sector-container { display: flex; justify-content: center; gap: 25px; font-size: 5vh; font-weight: 900; margin-top: 2vh; }
         .sec-name { color: var(--hrc-red); margin-right: 4px; font-size: 2.2vh; }
-        .sub-times { display: flex; flex-direction: column; align-items: center; margin-top: 2vh; }
-        #display { font-size: 3.5vh; color: #fff; font-weight: 900; }
-        #best-display { font-size: 7.5vh; color: #fff; font-weight: 900; line-height: 1; }
-        .best-label { font-size: 1.8vh; color: var(--hrc-red); margin-right: 12px; }
+
+        /* 下段情報：TOTALとBESTの距離を離す */
+        .sub-times { display: flex; flex-direction: column; align-items: center; margin-top: 4vh; gap: 2.5vh; } /* gapを広げた */
+        
+        #display { font-size: 3.5vh; color: #fff; font-weight: 900; opacity: 0.8; }
+        
+        /* BEST：さらに大きく */
+        #best-display { font-size: 9.5vh; color: #fff; font-weight: 900; line-height: 0.9; }
+        .best-label { font-size: 2.2vh; color: var(--hrc-red); margin-right: 15px; vertical-align: middle; }
 
         /* 右側パネル（右寄せ・コンパクト） */
         .right-section-wrapper { position: absolute; right: 10px; top: 15px; bottom: 75px; display: flex; gap: 15px; align-items: flex-start; }
@@ -41,15 +60,20 @@
 <body>
 <div id="dashboard">
     <div class="main-ui-container">
+        <!-- メインラップ -->
         <div id="display1">00:00.000</div>
+        
+        <!-- セクター -->
         <div id="sector-container">
             <span class="sec-item"><span class="sec-name">S1:</span><span id="s1_val">--.---</span></span>
             <span class="sec-item"><span class="sec-name">S2:</span><span id="s2_val">--.---</span></span>
             <span class="sec-item"><span class="sec-name">S3:</span><span id="s3_val">--.---</span></span>
         </div>
+
+        <!-- 下段 -->
         <div class="sub-times">
             <div id="display">TOTAL 00:00.000</div>
-            <div id="best-display"><span class="best-label">BEST</span>00:00.000</div>
+            <div id="best-display"><span class="best-label">BEST LAP</span>00:00.000</div>
         </div>
     </div>
 
@@ -70,7 +94,7 @@
         <button id="lapBtn">LAP/RESET</button>
         <button id="historyBtn">HISTORY</button>
         <button id="gpxBtn" style="display:none; background:var(--hrc-orange); color:#000;">GPX SAVE</button>
-        <button onclick="if(confirm('RESET?')) location.reload()">RELOAD</button>
+        <button onclick="if(confirm('RESET ALL?')) location.reload()">RELOAD</button>
     </footer>
 </div>
 
@@ -85,6 +109,7 @@
 </div>
 
 <script>
+/* 走行ログ記録・判定・GPX機能は完全維持 */
 'use strict';
 let swState = 0, startTime = 0, lapStartTime = 0, lapRecords = [], gpsPoints = [];
 let device = null, nmeaBuffer = '', lastPos = null;
@@ -110,7 +135,7 @@ function processLap(hitTime, isManual = false) {
 function updateLapList() {
     if (lapRecords.length === 0) return;
     const bestTime = Math.min(...lapRecords.map(r => r.time));
-    document.getElementById('best-display').innerHTML = `<span class="best-label">BEST</span>${timeFormat(bestTime)}`;
+    document.getElementById('best-display').innerHTML = `<span class="best-label">BEST LAP</span>${timeFormat(bestTime)}`;
     document.getElementById('lap').innerHTML = lapRecords.map(r => `<div class="lap-row ${r.time === bestTime ? 'best-lap' : ''}"><span>L${r.no}</span><span>${timeFormat(r.time)}</span></div>`).join('');
 }
 
@@ -135,9 +160,7 @@ function parseNMEA(line) {
     if (line.includes('GGA') && (p[6] !== '0' && p[6] !== '')) {
         const cur = { lat: dmmToDec(p[2], p[3]), lon: dmmToDec(p[4], p[5]), time: Date.now() };
         if (swState === 1) {
-            // ★ポイント：走行中の座標を記録
             gpsPoints.push({ lat: cur.lat, lon: cur.lon, time: new Date().toISOString(), speed: currentSpeedKmh });
-            
             if (lastPos) {
                 const hitSL = getIntersection(lastPos, cur, lines.startLine);
                 if (hitSL && (hitSL.time - (lapStartTime || startTime) > 15000)) processLap(hitSL.time, false);
@@ -157,18 +180,14 @@ function parseNMEA(line) {
     }
 }
 
-// GPXファイル作成とダウンロード
 document.getElementById('gpxBtn').onclick = function() {
     if (gpsPoints.length === 0) return alert("NO DATA");
     let gpx = `<?xml version="1.0" encoding="UTF-8"?><gpx version="1.1" creator="KLAP_DEGI"><trk><name>LAP_DATA</name><trkseg>`;
-    gpsPoints.forEach(p => {
-        gpx += `<trkpt lat="${p.lat}" lon="${p.lon}"><time>${p.time}</time><extensions><speed>${(p.speed/3.6).toFixed(2)}</speed></extensions></trkpt>`;
-    });
+    gpsPoints.forEach(p => { gpx += `<trkpt lat="${p.lat}" lon="${p.lon}"><time>${p.time}</time><extensions><speed>${(p.speed/3.6).toFixed(2)}</speed></extensions></trkpt>`; });
     gpx += `</trkseg></trk></gpx>`;
     const blob = new Blob([gpx], { type: 'application/gpx+xml' });
     const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url; a.download = `lap_${new Date().getTime()}.gpx`; a.click();
+    const a = document.createElement('a'); a.href = url; a.download = `lap_${new Date().getTime()}.gpx`; a.click();
 };
 
 function getIntersection(p1, p2, line) {
