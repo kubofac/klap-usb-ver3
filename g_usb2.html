@@ -149,29 +149,57 @@ function mainLoop() {
 function parseNMEA(line) {
     if (!line.includes('RMC') && !line.includes('GGA')) return;
     const p = line.split(',');
+    
+    // 速度データの更新 (RMC)
     if (line.includes('RMC') && p[2] === 'A') {
         currentSpeedKmh = parseFloat(p[7]) * 1.852;
         if (currentSpeedKmh > maxSpeedInLap) maxSpeedInLap = Math.round(currentSpeedKmh);
     }
+    
+    // 位置データの更新と通過判定 (GGA)
     if (line.includes('GGA') && (p[6] !== '0' && p[6] !== '')) {
         const cur = { lat: dmmToDec(p[2], p[3]), lon: dmmToDec(p[4], p[5]), time: Date.now() };
+        
         if (swState === 1) {
+            // GPXログへの追加
             gpsPoints.push({ lat: cur.lat, lon: cur.lon, time: new Date().toISOString(), speed: currentSpeedKmh });
+            
             if (lastPos) {
+                // 1. コントロールライン（スタート/フィニッシュ）判定
                 const hitSL = getIntersection(lastPos, cur, lines.startLine);
-                if (hitSL && (hitSL.time - (lapStartTime || startTime) > 15000)) processLap(hitSL.time, false);
-                ['s1', 's2', 's3'].forEach(s => {
+                // 15秒のチャタリング防止（誤検知防止）を適用
+                if (hitSL && (hitSL.time - (lapStartTime || startTime) > 15000)) {
+                    processLap(hitSL.time, false);
+                }
+
+                // 2. 各セクターラインの判定 (予測時刻ベース)
+                ['s1', 's2', 's3'].forEach((s, index) => {
                     const hit = getIntersection(lastPos, cur, lines[s + 'Line']);
+                    
                     if (hit) {
+                        // ラップ開始点からの経過秒数 (予測された hit.time を使用)
                         const absTime = (hit.time - (lapStartTime || startTime)) / 1000;
-                        if (s === 's1' && s1_abs === 0) { s1_abs = absTime; document.getElementById('s1_val').textContent = s1_abs.toFixed(3); }
-                        else if (s === 's2' && s2_abs === 0 && s1_abs > 0) { s2_abs = absTime; document.getElementById('s2_val').textContent = (absTime - s1_abs).toFixed(3); }
-                        else if (s === 's3' && s3_abs === 0 && s2_abs > 0) { s3_abs = absTime; document.getElementById('s3_val').textContent = (absTime - s2_abs).toFixed(3); }
+
+                        if (s === 's1' && s1_abs === 0) {
+                            s1_abs = absTime; // S1通過時点の絶対時間
+                            document.getElementById('s1_val').textContent = s1_abs.toFixed(3);
+                        } 
+                        else if (s === 's2' && s2_abs === 0 && s1_abs > 0) {
+                            s2_abs = absTime; // S2通過時点の絶対時間
+                            // 区間タイム = (S2絶対時間 - S1絶対時間)
+                            document.getElementById('s2_val').textContent = (s2_abs - s1_abs).toFixed(3);
+                        } 
+                        else if (s === 's3' && s3_abs === 0 && s2_abs > 0) {
+                            s3_abs = absTime; // S3通過時点の絶対時間
+                            // 区間タイム = (S3絶対時間 - S2絶対時間)
+                            document.getElementById('s3_val').textContent = (s3_abs - s2_abs).toFixed(3);
+                        }
                     }
                 });
             }
         }
         lastPos = cur;
+        // GPS信号受信中を示すインジケーター（ボタン色変更）
         document.getElementById('usbGpsBtn').style.background = "var(--hrc-red)";
     }
 }
