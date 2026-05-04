@@ -1,0 +1,8 @@
+[{
+      "relation": ["delegate_permission/common.handle_all_urls"],
+      "target": {
+        "namespace": "android_app",
+        "package_name": "com.kfactoryclub.klap_gps_ip_ver3.twa",
+        "sha256_cert_fingerprints": ["43:02:C4:87:3A:0C:E8:F9:F6:5C:E5:08:97:CB:36:A3:E4:60:D8:29:AE:F6:81:C0:FF:B1:8B:90:B3:40:DF:A6"]
+      }
+    }]
