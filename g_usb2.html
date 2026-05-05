@@ -109,7 +109,9 @@ let lines = { startLine: null, s1Line: null, s2Line: null, s3Line: null };
 let currentSpeedKmh = 0, maxSpeedInLap = 0;
 let isFrozen = false, freezeDisplayTime = "", freezeUntil = 0;
 let s1_abs = 0, s2_abs = 0, s3_abs = 0;
-
+    
+let validDirection = null; 
+let sectorDirections = { s1: null, s2: null, s3: null };
 function processLap(hitTime, isManual = false) {
     const lapTimeMs = hitTime - (lapStartTime || startTime);
     // ラップデータを保存（MAX速度を含む）
@@ -146,60 +148,60 @@ function mainLoop() {
     requestAnimationFrame(mainLoop);
 }
 
+// 2. 通過判定ロジック（各セクターの方向を個別に学習・記憶）
 function parseNMEA(line) {
     if (!line.includes('RMC') && !line.includes('GGA')) return;
     const p = line.split(',');
     
-    // 速度データの更新 (RMC)
     if (line.includes('RMC') && p[2] === 'A') {
         currentSpeedKmh = parseFloat(p[7]) * 1.852;
         if (currentSpeedKmh > maxSpeedInLap) maxSpeedInLap = Math.round(currentSpeedKmh);
     }
     
-    // 位置データの更新と通過判定 (GGA)
     if (line.includes('GGA') && (p[6] !== '0' && p[6] !== '')) {
         const cur = { lat: dmmToDec(p[2], p[3]), lon: dmmToDec(p[4], p[5]), time: Date.now() };
         
         if (swState === 1) {
-            // GPXログへの追加
             gpsPoints.push({ lat: cur.lat, lon: cur.lon, time: new Date().toISOString(), speed: currentSpeedKmh });
             
             if (lastPos) {
-                // 1. コントロールライン（スタート/フィニッシュ）判定
+                // コントロールライン判定
                 const hitSL = getIntersection(lastPos, cur, lines.startLine);
-                // 15秒のチャタリング防止（誤検知防止）を適用
-                if (hitSL && (hitSL.time - (lapStartTime || startTime) > 15000)) {
-                    processLap(hitSL.time, false);
+                if (hitSL) {
+                    // 初回通過時にコントロールラインの方向を記憶
+                    if (validDirection === null) validDirection = hitSL.dir;
+                    // 記憶した方向と一致し、かつ15秒経過している場合のみラップを更新
+                    if (hitSL.dir === validDirection && (hitSL.time - (lapStartTime || startTime) > 15000)) {
+                        processLap(hitSL.time, false);
+                    }
                 }
 
-                // 2. 各セクターラインの判定 (予測時刻ベース)
-                ['s1', 's2', 's3'].forEach((s, index) => {
+                // セクターライン判定
+                ['s1', 's2', 's3'].forEach((s) => {
                     const hit = getIntersection(lastPos, cur, lines[s + 'Line']);
-                    
                     if (hit) {
-                        // ラップ開始点からの経過秒数 (予測された hit.time を使用)
-                        const absTime = (hit.time - (lapStartTime || startTime)) / 1000;
+                        // 各セクターラインの通過方向を個別に記憶
+                        if (sectorDirections[s] === null) sectorDirections[s] = hit.dir;
 
-                        if (s === 's1' && s1_abs === 0) {
-                            s1_abs = absTime; // S1通過時点の絶対時間
-                            document.getElementById('s1_val').textContent = s1_abs.toFixed(3);
-                        } 
-                        else if (s === 's2' && s2_abs === 0 && s1_abs > 0) {
-                            s2_abs = absTime; // S2通過時点の絶対時間
-                            // 区間タイム = (S2絶対時間 - S1絶対時間)
-                            document.getElementById('s2_val').textContent = (s2_abs - s1_abs).toFixed(3);
-                        } 
-                        else if (s === 's3' && s3_abs === 0 && s2_abs > 0) {
-                            s3_abs = absTime; // S3通過時点の絶対時間
-                            // 区間タイム = (S3絶対時間 - S2絶対時間)
-                            document.getElementById('s3_val').textContent = (s3_abs - s2_abs).toFixed(3);
+                        // 記憶した方向と一致する場合のみセクタータイムを記録
+                        if (hit.dir === sectorDirections[s]) {
+                            const absTime = (hit.time - (lapStartTime || startTime)) / 1000;
+                            if (s === 's1' && s1_abs === 0) {
+                                s1_abs = absTime;
+                                document.getElementById('s1_val').textContent = s1_abs.toFixed(3);
+                            } else if (s === 's2' && s2_abs === 0 && s1_abs > 0) {
+                                s2_abs = absTime;
+                                document.getElementById('s2_val').textContent = (s2_abs - s1_abs).toFixed(3);
+                            } else if (s === 's3' && s3_abs === 0 && s2_abs > 0) {
+                                s3_abs = absTime;
+                                document.getElementById('s3_val').textContent = (s3_abs - s2_abs).toFixed(3);
+                            }
                         }
                     }
                 });
             }
         }
         lastPos = cur;
-        // GPS信号受信中を示すインジケーター（ボタン色変更）
         document.getElementById('usbGpsBtn').style.background = "var(--hrc-red)";
     }
 }
@@ -214,22 +216,46 @@ document.getElementById('gpxBtn').onclick = function() {
     const a = document.createElement('a'); a.href = url; a.download = `lap_${new Date().getTime()}.gpx`; a.click();
 };
 
+// 1. 交点計算と方向判定（外積）を行う関数
 function getIntersection(p1, p2, line) {
     if (!line) return null;
-    const x1 = p1.lon, y1 = p1.lat, x2 = p2.lon, y2 = p2.lat, x3 = line.p1.lon, y3 = line.p1.lat, x4 = line.p2.lon, y4 = line.p2.lat;
+    const x1 = p1.lon, y1 = p1.lat, x2 = p2.lon, y2 = p2.lat;
+    const x3 = line.p1.lon, y3 = line.p1.lat, x4 = line.p2.lon, y4 = line.p2.lat;
+    
     const den = (y4 - y3) * (x2 - x1) - (x4 - x3) * (y2 - y1);
     if (Math.abs(den) < 1e-12) return null;
+    
     const t = ((x4 - x3) * (y1 - y3) - (y4 - y3) * (x1 - x3)) / den;
     const u = ((x2 - x1) * (y1 - y3) - (y2 - y1) * (x1 - x3)) / den;
-    if (t >= 0 && t <= 1 && u >= -0.2 && u <= 1.2) return { time: p1.time + (p2.time - p1.time) * t };
+    
+    // ラインを跨いだ場合（予測時刻を計算）
+    if (t >= 0 && t <= 1 && u >= 0 && u <= 1) {
+        // 方向判定（外積を用いて左右どちらから進入したかを算出）
+        const Lx = x4 - x3;
+        const Ly = y4 - y3;
+        const Vx = x2 - x1;
+        const Vy = y2 - y1;
+        const dir = (Lx * Vy - Ly * Vx) > 0 ? 1 : -1;
+        
+        return { 
+            time: p1.time + (p2.time - p1.time) * t,
+            dir: dir 
+        };
+    }
     return null;
 }
+
+
 function dmmToDec(d, dir){ if(!d) return 0; const dot=d.indexOf('.'); const deg=parseInt(d.substring(0,dot-2)), min=parseFloat(d.substring(dot-2)); return (dir==='S'||dir==='W')?-(deg+min/60):(deg+min/60); }
 function timeFormat(ms){ const m=Math.floor(ms/60000), s=Math.floor((ms%60000)/1000), ms2=Math.floor(ms%1000); return `${m.toString().padStart(2,'0')}:${s.toString().padStart(2,'0')}.${ms2.toString().padStart(3,'0')}`; }
 
+// 3. STARTボタン（走行開始時に記憶をリセット）
 document.getElementById('startBtn').onclick = function() {
     if (swState !== 1) { 
         swState = 1; startTime = Date.now(); lapStartTime = 0; lapRecords = []; gpsPoints = [];
+        // 方向記憶を初期化（新しい走行セッションの最初に学習し直す）
+        validDirection = null;
+        sectorDirections = { s1: null, s2: null, s3: null };
         this.classList.add('active'); document.getElementById('gpxBtn').style.display = 'none';
     } else { 
         swState = 2; this.classList.remove('active'); document.getElementById('gpxBtn').style.display = 'block'; 
