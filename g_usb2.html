@@ -121,50 +121,67 @@ let lapCount = 1;
 
     
 function processLap(hitTime, isManual = false) {
-    // 1周目の計測中（lapStartTimeが0）なら、走行開始時のstartTimeを基準にする
-    const currentStart = lapStartTime > 0 ? lapStartTime : startTime;
+    // 基準時間を決定（1周目ならstartTime、2周目以降ならlapStartTime）
+    const baseTime = lapStartTime > 0 ? lapStartTime : startTime;
+    
+    if (baseTime > 0) {
+        const lapTimeMs = hitTime - baseTime; // ミリ秒で計算
 
-    if (currentStart > 0) {
-        const lapTimeMs = hitTime - currentStart;
-        const lapTimeSec = lapTimeMs / 1000;
-
-        // GPS通過時のみ15秒フリーズさせる（手動時は即リセット）
+        // GPS自動通過時のみ15秒フリーズ
         if (!isManual) {
             isFrozen = true;
             freezeUntil = Date.now() + 15000;
             freezeDisplayTime = timeFormat(lapTimeMs);
         }
 
-        // セクター計算の安全な書き出し（エラー防止）
+        // セクター計算
         const s1_text = s1_abs > 0 ? s1_abs.toFixed(3) : "--.---";
         const s2_text = (s2_abs > 0 && s1_abs > 0) ? (s2_abs - s1_abs).toFixed(3) : "--.---";
         const s3_text = (s3_abs > 0 && s2_abs > 0) ? (s3_abs - s2_abs).toFixed(3) : "--.---";
 
         const lapData = {
             no: lapRecords.length + 1,
-            time: parseFloat(lapTimeSec.toFixed(3)),
+            time: lapTimeMs, // ★ミリ秒のまま保存する（重要！）
             s1: s1_text,
             s2: s2_text,
             s3: s3_text,
-            max: maxSpeedInLap
+            max: maxSpeedInLap,
+            points: [...currentLapPoints]
         };
 
-        // 配列の先頭に追加（履歴の上が新しくなる）
+        // 配列の「先頭」に追加（これで最新が常に上に来る）
         lapRecords.unshift(lapData);
-        
-        // 履歴表示の更新
         updateLapList();
     }
 
-    // 次のラップへの準備（リセット）
+    // 次の周回への準備
     lapStartTime = hitTime;
+    currentLapPoints = [];
     maxSpeedInLap = 0;
     s1_abs = 0; s2_abs = 0; s3_abs = 0;
-    
-    // 画面上のセクター表示もリセット
+
+    // 画面表示のリセット
     document.getElementById('s1_val').textContent = "--.---";
     document.getElementById('s2_val').textContent = "--.---";
     document.getElementById('s3_val').textContent = "--.---";
+}
+
+function updateLapList() {
+    if (lapRecords.length === 0) return;
+
+    // ベストラップの算出（timeはミリ秒）
+    const bestTime = Math.min(...lapRecords.map(r => r.time));
+
+    // メイン画面のBEST表示を更新
+    document.getElementById('best-display').innerHTML = 
+        `<span class="best-label">BEST LAP</span>${timeFormat(bestTime)}`;
+
+    // メイン画面右側のラップリスト（最新5〜10件程度が表示される）
+    document.getElementById('lap').innerHTML = lapRecords.map(r => `
+        <div class="lap-row ${r.time === bestTime ? 'best-lap' : ''}">
+            <span>L${r.no}</span>
+            <span>${timeFormat(r.time)}</span>
+        </div>`).join('');
 }
 
 function updateLapList() {
@@ -381,13 +398,16 @@ document.getElementById('usbGpsBtn').onclick = async function() {
 document.getElementById('historyBtn').onclick = function() {
     if (lapRecords.length === 0) return;
     const bT = Math.min(...lapRecords.map(r => r.time));
+    
     document.getElementById('history-body').innerHTML = lapRecords.map(r => `
         <tr>
             <td>${r.no}</td>
             <td>${r.s1}</td>
             <td>${r.s2}</td>
             <td>${r.s3}</td>
-            <td style="${r.time===bT?'color:var(--hrc-red);font-weight:bold;':''}">${timeFormat(r.time)}</td>
+            <td style="${r.time === bT ? 'color:var(--hrc-red);font-weight:bold;' : ''}">
+                ${timeFormat(r.time)}
+            </td>
             <td style="color:var(--hrc-orange);">${r.max}</td>
         </tr>`).join('');
     document.getElementById('history-page').style.display = 'block';
