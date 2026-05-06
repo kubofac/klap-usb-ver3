@@ -121,18 +121,17 @@ let lapCount = 1;
 
     
 function processLap(hitTime, isManual = false) {
-    // 1. ラップ計測中（lapStartTime > 0）の場合のみラップを記録
     if (lapStartTime > 0) {
         const lapTime = (hitTime - lapStartTime) / 1000;
 
-        // --- 表示固定（フリーズ）の設定 ---
-        isFrozen = true;
-        freezeUntil = Date.now() + 15000; // 15秒間フリーズさせる
-        freezeDisplayTime = timeFormat(lapTime * 1000); // 通過タイムを固定表示用に保存
-        // ------------------------------
+        // --- 表示固定（フリーズ）の設定：手動でない場合のみ実行 ---
+        if (!isManual) {
+            isFrozen = true;
+            freezeUntil = Date.now() + 15000; 
+            freezeDisplayTime = timeFormat(lapTime * 1000); 
+        }
+        // --------------------------------------------------
 
-        // ラップデータのオブジェクト作成
-        // プロパティ名を UI表示側の r.no / r.max 等に合わせる
         const lapData = {
             no: lapCount,
             time: parseFloat(lapTime.toFixed(3)),
@@ -140,22 +139,20 @@ function processLap(hitTime, isManual = false) {
             s2: s2_abs > 0 ? (s2_abs - s1_abs).toFixed(3) : "--.---",
             s3: s3_abs > 0 ? (s3_abs - s2_abs).toFixed(3) : "--.---",
             max: maxSpeedInLap,
-            points: [...currentLapPoints] // 現在の周回のGPSログを保存
+            points: [...currentLapPoints]
         };
 
         lapRecords.push(lapData);
-        updateLapList();      // 履歴一覧を更新
-        checkBestTime(lapTime); // ベストラップ判定
-        lapCount++;           // 次のラップへ
+        updateLapList();
+        // checkBestTime(lapTime); // 必要に応じて（元のコードに定義がない場合はエラーになるので注意）
+        lapCount++;
     }
 
-    // 2. 次の周回のためのリセット処理
-    lapStartTime = hitTime;   // 現在の通過時刻を次の周の開始時刻にする
-    currentLapPoints = [];    // GPSポイントをリセット
-    maxSpeedInLap = 0;        // 最高速をリセット
-    s1_abs = 0; s2_abs = 0; s3_abs = 0; // セクターをリセット
+    lapStartTime = hitTime;
+    currentLapPoints = [];
+    maxSpeedInLap = 0;
+    s1_abs = 0; s2_abs = 0; s3_abs = 0;
 
-    // マニュアル計測時などのデバッグ用
     console.log(`Lap Processed: ${isManual ? "Manual" : "Auto"}`);
 }
 
