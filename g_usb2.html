@@ -107,42 +107,56 @@ let swState = 0, startTime = 0, lapStartTime = 0, lapRecords = [], gpsPoints = [
 let device = null, nmeaBuffer = '', lastPos = null;
 let lines = { startLine: null, s1Line: null, s2Line: null, s3Line: null };
 let currentSpeedKmh = 0, maxSpeedInLap = 0;
-let isFrozen = false, freezeDisplayTime = "", freezeUntil = 0;
+let isFrozen = false, freezeDisplayTime = "00:00.000", freezeUntil = 0;
 let s1_abs = 0, s2_abs = 0, s3_abs = 0;
 let currentLapPoints = [];   
 let validDirection = null; 
 let sectorDirections = { s1: null, s2: null, s3: null };
-function processLap(hitTime, isManual = false) {
-    const lapTimeMs = hitTime - (lapStartTime || startTime);
-    
-    // 現在のラップのポイントを保存
-    const lapData = { 
-        no: lapRecords.length + 1, 
-        time: lapTimeMs, 
-        max: Math.round(maxSpeedInLap), 
-        s1: document.getElementById('s1_val').textContent, 
-        s2: document.getElementById('s2_val').textContent, 
-        s3: document.getElementById('s3_val').textContent,
-        points: [...currentLapPoints] // このラップの軌跡をコピー
-    };
-    
-    lapRecords.unshift(lapData);
-    updateLapList();
+let cooldownMs = 15000; // 15秒（ピットアウト直後の誤作動防止）  
+let lapCount = 1;
 
-    // 次のラップのためにリセット
-    currentLapPoints = []; 
-    if (!isManual) { 
-        isFrozen = true; 
-        freezeDisplayTime = timeFormat(lapTimeMs); 
-        freezeUntil = Date.now() + 10000; 
-    }
-    lapStartTime = hitTime; 
-    maxSpeedInLap = 0; 
-    s1_abs = 0; s2_abs = 0; s3_abs = 0;
+
+
+
+
     
-    setTimeout(() => { 
-        if(swState === 1) ['s1_val','s2_val','s3_val'].forEach(id => document.getElementById(id).textContent = "--.---"); 
-    }, 3000);
+function processLap(hitTime, isManual = false) {
+    // 1. ラップ計測中（lapStartTime > 0）の場合のみラップを記録
+    if (lapStartTime > 0) {
+        const lapTime = (hitTime - lapStartTime) / 1000;
+
+        // --- 表示固定（フリーズ）の設定 ---
+        isFrozen = true;
+        freezeUntil = Date.now() + 15000; // 15秒間フリーズさせる
+        freezeDisplayTime = timeFormat(lapTime * 1000); // 通過タイムを固定表示用に保存
+        // ------------------------------
+
+        // ラップデータのオブジェクト作成
+        // プロパティ名を UI表示側の r.no / r.max 等に合わせる
+        const lapData = {
+            no: lapCount,
+            time: parseFloat(lapTime.toFixed(3)),
+            s1: s1_abs > 0 ? s1_abs.toFixed(3) : "--.---",
+            s2: s2_abs > 0 ? (s2_abs - s1_abs).toFixed(3) : "--.---",
+            s3: s3_abs > 0 ? (s3_abs - s2_abs).toFixed(3) : "--.---",
+            max: maxSpeedInLap,
+            points: [...currentLapPoints] // 現在の周回のGPSログを保存
+        };
+
+        lapRecords.push(lapData);
+        updateLapList();      // 履歴一覧を更新
+        checkBestTime(lapTime); // ベストラップ判定
+        lapCount++;           // 次のラップへ
+    }
+
+    // 2. 次の周回のためのリセット処理
+    lapStartTime = hitTime;   // 現在の通過時刻を次の周の開始時刻にする
+    currentLapPoints = [];    // GPSポイントをリセット
+    maxSpeedInLap = 0;        // 最高速をリセット
+    s1_abs = 0; s2_abs = 0; s3_abs = 0; // セクターをリセット
+
+    // マニュアル計測時などのデバッグ用
+    console.log(`Lap Processed: ${isManual ? "Manual" : "Auto"}`);
 }
 
 function updateLapList() {
@@ -174,47 +188,54 @@ function parseNMEA(line) {
     }
     
     if (line.includes('GGA') && (p[6] !== '0' && p[6] !== '')) {
-    const cur = { lat: dmmToDec(p[2], p[3]), lon: dmmToDec(p[4], p[5]), time: Date.now() };
+        const cur = { lat: dmmToDec(p[2], p[3]), lon: dmmToDec(p[4], p[5]), time: Date.now() };
     
-    if (swState === 1) {
-        // 全体保存用ではなく、現在のラップ用に追加
-        currentLapPoints.push({ lat: cur.lat, lon: cur.lon, time: new Date().toISOString(), speed: currentSpeedKmh });
+        if (swState === 1) {
+            currentLapPoints.push({ lat: cur.lat, lon: cur.lon, time: new Date().toISOString(), speed: currentSpeedKmh });
             
             if (lastPos) {
-                // コントロールライン判定
+                // --- 1. スタート/コントロールライン判定 ---
                 const hitSL = getIntersection(lastPos, cur, lines.startLine);
                 if (hitSL) {
-                    // 初回通過時にコントロールラインの方向を記憶
+                    // 初回通過時に方向を記憶
                     if (validDirection === null) validDirection = hitSL.dir;
-                    // 記憶した方向と一致し、かつ15秒経過している場合のみラップを更新
-                    if (hitSL.dir === validDirection && (hitSL.time - (lapStartTime || startTime) > 15000)) {
+
+                    // クールダウン（15秒）設定
+                    const cooldownMs = 15000; 
+
+                    // 記憶した方向と一致し、かつ15秒経過している場合のみラップ開始
+                    if (hitSL.dir === validDirection && (hitSL.time - (lapStartTime || startTime) > cooldownMs)) {
                         processLap(hitSL.time, false);
                     }
                 }
 
-                // セクターライン判定
-                ['s1', 's2', 's3'].forEach((s) => {
-                    const hit = getIntersection(lastPos, cur, lines[s + 'Line']);
-                    if (hit) {
-                        // 各セクターラインの通過方向を個別に記憶
-                        if (sectorDirections[s] === null) sectorDirections[s] = hit.dir;
+                // --- 2. セクターライン判定（V2.1 厳格仕様） ---
+                // スタートラインを通過（lapStartTime > 0）するまで、セクター判定は一切行わない
+                if (lapStartTime > 0) {
+                    ['s1', 's2', 's3'].forEach((s) => {
+                        const hit = getIntersection(lastPos, cur, lines[s + 'Line']);
+                        if (hit) {
+                            // 各セクターラインの通過方向を個別に記憶
+                            if (sectorDirections[s] === null) sectorDirections[s] = hit.dir;
 
-                        // 記憶した方向と一致する場合のみセクタータイムを記録
-                        if (hit.dir === sectorDirections[s]) {
-                            const absTime = (hit.time - (lapStartTime || startTime)) / 1000;
-                            if (s === 's1' && s1_abs === 0) {
-                                s1_abs = absTime;
-                                document.getElementById('s1_val').textContent = s1_abs.toFixed(3);
-                            } else if (s === 's2' && s2_abs === 0 && s1_abs > 0) {
-                                s2_abs = absTime;
-                                document.getElementById('s2_val').textContent = (s2_abs - s1_abs).toFixed(3);
-                            } else if (s === 's3' && s3_abs === 0 && s2_abs > 0) {
-                                s3_abs = absTime;
-                                document.getElementById('s3_val').textContent = (s3_abs - s2_abs).toFixed(3);
+                            // 記憶した方向と一致する場合のみ記録
+                            if (hit.dir === sectorDirections[s]) {
+                                const absTime = (hit.time - lapStartTime) / 1000;
+                                
+                                if (s === 's1' && s1_abs === 0) {
+                                    s1_abs = absTime;
+                                    document.getElementById('s1_val').textContent = s1_abs.toFixed(3);
+                                } else if (s === 's2' && s2_abs === 0 && s1_abs > 0) {
+                                    s2_abs = absTime;
+                                    document.getElementById('s2_val').textContent = (s2_abs - s1_abs).toFixed(3);
+                                } else if (s === 's3' && s3_abs === 0 && s2_abs > 0) {
+                                    s3_abs = absTime;
+                                    document.getElementById('s3_val').textContent = (s3_abs - s2_abs).toFixed(3);
+                                }
                             }
                         }
-                    }
-                });
+                    });
+                }
             }
         }
         lastPos = cur;
