@@ -109,25 +109,40 @@ let lines = { startLine: null, s1Line: null, s2Line: null, s3Line: null };
 let currentSpeedKmh = 0, maxSpeedInLap = 0;
 let isFrozen = false, freezeDisplayTime = "", freezeUntil = 0;
 let s1_abs = 0, s2_abs = 0, s3_abs = 0;
-    
+let currentLapPoints = [];   
 let validDirection = null; 
 let sectorDirections = { s1: null, s2: null, s3: null };
 function processLap(hitTime, isManual = false) {
     const lapTimeMs = hitTime - (lapStartTime || startTime);
-    // ラップデータを保存（MAX速度を含む）
+    
+    // 現在のラップのポイントを保存
     const lapData = { 
         no: lapRecords.length + 1, 
         time: lapTimeMs, 
         max: Math.round(maxSpeedInLap), 
         s1: document.getElementById('s1_val').textContent, 
         s2: document.getElementById('s2_val').textContent, 
-        s3: document.getElementById('s3_val').textContent
+        s3: document.getElementById('s3_val').textContent,
+        points: [...currentLapPoints] // このラップの軌跡をコピー
     };
+    
     lapRecords.unshift(lapData);
     updateLapList();
-    if (!isManual) { isFrozen = true; freezeDisplayTime = timeFormat(lapTimeMs); freezeUntil = Date.now() + 10000; }
-    lapStartTime = hitTime; maxSpeedInLap = 0; s1_abs = 0; s2_abs = 0; s3_abs = 0;
-    setTimeout(() => { if(swState === 1) ['s1_val','s2_val','s3_val'].forEach(id => document.getElementById(id).textContent = "--.---"); }, 3000);
+
+    // 次のラップのためにリセット
+    currentLapPoints = []; 
+    if (!isManual) { 
+        isFrozen = true; 
+        freezeDisplayTime = timeFormat(lapTimeMs); 
+        freezeUntil = Date.now() + 10000; 
+    }
+    lapStartTime = hitTime; 
+    maxSpeedInLap = 0; 
+    s1_abs = 0; s2_abs = 0; s3_abs = 0;
+    
+    setTimeout(() => { 
+        if(swState === 1) ['s1_val','s2_val','s3_val'].forEach(id => document.getElementById(id).textContent = "--.---"); 
+    }, 3000);
 }
 
 function updateLapList() {
@@ -159,10 +174,11 @@ function parseNMEA(line) {
     }
     
     if (line.includes('GGA') && (p[6] !== '0' && p[6] !== '')) {
-        const cur = { lat: dmmToDec(p[2], p[3]), lon: dmmToDec(p[4], p[5]), time: Date.now() };
-        
-        if (swState === 1) {
-            gpsPoints.push({ lat: cur.lat, lon: cur.lon, time: new Date().toISOString(), speed: currentSpeedKmh });
+    const cur = { lat: dmmToDec(p[2], p[3]), lon: dmmToDec(p[4], p[5]), time: Date.now() };
+    
+    if (swState === 1) {
+        // 全体保存用ではなく、現在のラップ用に追加
+        currentLapPoints.push({ lat: cur.lat, lon: cur.lon, time: new Date().toISOString(), speed: currentSpeedKmh });
             
             if (lastPos) {
                 // コントロールライン判定
@@ -207,13 +223,70 @@ function parseNMEA(line) {
 }
 
 document.getElementById('gpxBtn').onclick = function() {
-    if (gpsPoints.length === 0) return alert("NO DATA");
-    let gpx = `<?xml version="1.0" encoding="UTF-8"?><gpx version="1.1" creator="KLAP_DEGI"><trk><name>LAP_DATA</name><trkseg>`;
-    gpsPoints.forEach(p => { gpx += `<trkpt lat="${p.lat}" lon="${p.lon}"><time>${p.time}</time><extensions><speed>${(p.speed/3.6).toFixed(2)}</speed></extensions></trkpt>`; });
-    gpx += `</trkseg></trk></gpx>`;
-    const blob = new Blob([gpx], { type: 'application/gpx+xml' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a'); a.href = url; a.download = `lap_${new Date().getTime()}.gpx`; a.click();
+    // 1. ラップデータがあるか確認
+    if (lapRecords.length === 0) {
+        alert("保存するラップデータがありません。");
+        return;
+    }
+
+    // 2. GPXのヘッダー部分
+    // 作成者（creator）はアプリ名に設定
+    let gpx = `<?xml version="1.0" encoding="UTF-8"?>
+<gpx version="1.1" creator="KLAP_DEGI" xmlns="http://www.topografix.com/GPX/1/1">
+<trk>
+<name>KLAP_DATA_${new Date().toLocaleDateString()}</name>`;
+
+    // 3. ラップごとにトラックセグメント（trkseg）を作成
+    // lapRecords は unshift で新しい順に入っていることが多いため、
+    // 走行順（古い順）にするために reverse() を使ってループします
+    const sortedLaps = [...lapRecords].reverse();
+
+    sortedLaps.forEach(lap => {
+        // 各ラップの開始タグ
+        gpx += `\n<trkseg>`;
+        
+        // そのラップに含まれる全GPSポイントを書き出し
+        if (lap.points && lap.points.length > 0) {
+            lap.points.forEach(p => {
+                // 時刻はISO形式、速度はm/sに変換してextensionsに格納
+                const speedMS = (p.speed / 3.6).toFixed(2);
+                gpx += `\n<trkpt lat="${p.lat}" lon="${p.lon}">
+<time>${p.time}</time>
+<extensions><speed>${speedMS}</speed></extensions>
+</trkpt>`;
+            });
+        }
+        
+        // 各ラップの終了タグ
+        gpx += `\n</trkseg>`;
+    });
+
+    // 4. GPXのフッター部分
+    gpx += `\n</trk>\n</gpx>`;
+
+    // 5. ファイル保存処理（Blob作成とダウンロード実行）
+    try {
+        const blob = new Blob([gpx], { type: 'application/gpx+xml' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        const filename = `klap_${new Date().toISOString().replace(/[:.]/g, '-')}.gpx`;
+        
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        
+        // 後片付け
+        setTimeout(() => {
+            document.body.removeChild(a);
+            window.URL.revokeObjectURL(url);
+        }, 100);
+        
+        console.log("GPX File saved: " + filename);
+    } catch (err) {
+        console.error("GPX保存中にエラーが発生しました:", err);
+        alert("GPXファイルの作成に失敗しました。");
+    }
 };
 
 // 1. 交点計算と方向判定（外積）を行う関数
