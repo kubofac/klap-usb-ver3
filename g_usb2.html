@@ -27,7 +27,30 @@
         .right-section-wrapper { position: absolute; right: 10px; top: 15px; bottom: 75px; display: flex; gap: 15px; align-items: flex-start; }
         #lap-panel { width: 150px; height: 100%; display: flex; flex-direction: column; }
         #lap { flex: 1; overflow-y: auto; scrollbar-width: none; text-align: right; }
-        .lap-row { display: flex; justify-content: space-between; padding: 4px 0; border-bottom: 1px solid #222; font-size: 15px; }
+        /* 右側パネルのラップ行：右寄せに配置を変更 */
+.lap-row { 
+    display: flex; 
+    justify-content: flex-end; /* 右側に寄せる */
+    align-items: baseline;     /* 文字の下端を揃える */
+    gap: 15px;                 /* L番号とタイムの間隔（ここでお好みの距離に調整） */
+    padding: 6px 0; 
+    border-bottom: 1px solid #222; 
+    font-size: 22px;           /* 少し大きめに設定 */
+}
+
+/* L1, L2などの番号部分 */
+.lap-row span:first-child {
+    color: #888;
+    font-size: 22px;           /* 番号は小さくしてタイムを引き立てる */
+    font-weight: normal;
+}
+
+/* タイム部分 */
+.lap-row span:last-child {
+    font-family: 'Arial Black', sans-serif;
+    min-width: 110px;          /* タイムの桁数が変わってもガタつかないように固定幅を確保 */
+    text-align: right;
+}
         .best-lap { color: var(--hrc-red); font-weight: bold; }
         .data-column { display: flex; flex-direction: column; gap: 15px; min-width: 90px; }
         .data-box { text-align: right; }
