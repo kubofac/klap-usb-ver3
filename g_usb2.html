@@ -292,32 +292,37 @@ function parseNMEA(line) {
 }
 
 document.getElementById('gpxBtn').onclick = function() {
-    // 1. ラップデータがあるか確認
     if (lapRecords.length === 0) {
         alert("保存するラップデータがありません。");
         return;
     }
 
-    // 2. GPXのヘッダー部分
-    // 作成者（creator）はアプリ名に設定
+    // 1. セクター座標を解析ソフトに伝えるためのメタデータ作成
+    let lineDesc = "";
+    if (lines.startLine) {
+        lineDesc = `LINE_DATA[SL:${lines.startLine.p1.lat},${lines.startLine.p1.lon},${lines.startLine.p2.lat},${lines.startLine.p2.lon}`;
+        if (lines.s1Line) lineDesc += `|S1:${lines.s1Line.p1.lat},${lines.s1Line.p1.lon},${lines.s1Line.p2.lat},${lines.s1Line.p2.lon}`;
+        if (lines.s2Line) lineDesc += `|S2:${lines.s2Line.p1.lat},${lines.s2Line.p1.lon},${lines.s2Line.p2.lat},${lines.s2Line.p2.lon}`;
+        if (lines.s3Line) lineDesc += `|S3:${lines.s3Line.p1.lat},${lines.s3Line.p1.lon},${lines.s3Line.p2.lat},${lines.s3Line.p2.lon}`;
+        lineDesc += `]`;
+    }
+
+    // 2. GPXヘッダー作成
     let gpx = `<?xml version="1.0" encoding="UTF-8"?>
 <gpx version="1.1" creator="KLAP_DEGI" xmlns="http://www.topografix.com/GPX/1/1">
+<metadata>
+    <desc>${lineDesc}</desc>
+</metadata>
 <trk>
 <name>KLAP_DATA_${new Date().toLocaleDateString()}</name>`;
 
-    // 3. ラップごとにトラックセグメント（trkseg）を作成
-    // lapRecords は unshift で新しい順に入っていることが多いため、
-    // 走行順（古い順）にするために reverse() を使ってループします
+    // 3. ラップごとに <trkseg> で区切って出力（古い順に並び替え）
     const sortedLaps = [...lapRecords].reverse();
 
     sortedLaps.forEach(lap => {
-        // 各ラップの開始タグ
-        gpx += `\n<trkseg>`;
-        
-        // そのラップに含まれる全GPSポイントを書き出し
+        gpx += `\n<trkseg>`; 
         if (lap.points && lap.points.length > 0) {
             lap.points.forEach(p => {
-                // 時刻はISO形式、速度はm/sに変換してextensionsに格納
                 const speedMS = (p.speed / 3.6).toFixed(2);
                 gpx += `\n<trkpt lat="${p.lat}" lon="${p.lon}">
 <time>${p.time}</time>
@@ -325,36 +330,28 @@ document.getElementById('gpxBtn').onclick = function() {
 </trkpt>`;
             });
         }
-        
-        // 各ラップの終了タグ
         gpx += `\n</trkseg>`;
     });
 
-    // 4. GPXのフッター部分
+    // 4. GPXフッター
     gpx += `\n</trk>\n</gpx>`;
 
-    // 5. ファイル保存処理（Blob作成とダウンロード実行）
+    // 5. 保存実行
     try {
         const blob = new Blob([gpx], { type: 'application/gpx+xml' });
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         const filename = `klap_${new Date().toISOString().replace(/[:.]/g, '-')}.gpx`;
-        
         a.href = url;
         a.download = filename;
         document.body.appendChild(a);
         a.click();
-        
-        // 後片付け
         setTimeout(() => {
             document.body.removeChild(a);
             window.URL.revokeObjectURL(url);
         }, 100);
-        
-        console.log("GPX File saved: " + filename);
     } catch (err) {
-        console.error("GPX保存中にエラーが発生しました:", err);
-        alert("GPXファイルの作成に失敗しました。");
+        alert("GPX保存失敗: " + err);
     }
 };
 
