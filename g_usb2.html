@@ -108,19 +108,19 @@
 <div id="history-page">
     <div class="close-btn" onclick="document.getElementById('history-page').style.display='none'">CLOSE</div>
     <div style="overflow-y: auto; height: calc(100% - 80px);">
-        <table id="history-table">
-            <thead>
-                <tr>
-                    <th>LAP</th>
-                    <th>S1</th>
-                    <th>S2</th>
-                    <th>S3</th>
-                    <th>TIME</th>
-                    <th style="color:var(--hrc-orange);">MAX</th>
-                </tr>
-            </thead>
-            <tbody id="history-body"></tbody>
-        </table>
+       <table id="history-table">
+    <thead>
+        <tr>
+            <th>LAP</th>
+            <th>S1</th>
+            <th>S2</th>
+            <th>S3</th>
+            <th>S4</th> <th>TIME</th>
+            <th style="color:var(--hrc-orange);">MAX</th>
+        </tr>
+    </thead>
+    <tbody id="history-body"></tbody>
+</table>
     </div>
 </div>
 
@@ -131,48 +131,50 @@ let device = null, nmeaBuffer = '', lastPos = null;
 let lines = { startLine: null, s1Line: null, s2Line: null, s3Line: null };
 let currentSpeedKmh = 0, maxSpeedInLap = 0;
 let isFrozen = false, freezeDisplayTime = "00:00.000", freezeUntil = 0;
-let s1_abs = 0, s2_abs = 0, s3_abs = 0;
+
 let currentLapPoints = [];   
 let validDirection = null; 
 let sectorDirections = { s1: null, s2: null, s3: null };
 let cooldownMs = 15000; // 15秒（ピットアウト直後の誤作動防止）  
 let lapCount = 1;
-
-
-
-
-
+let s1_abs = 0, s2_abs = 0, s3_abs = 0, s4_abs = 0; // s4_absを追加
     
 function processLap(hitTime, isManual = false) {
     // 基準時間を決定（1周目ならstartTime、2周目以降ならlapStartTime）
     const baseTime = lapStartTime > 0 ? lapStartTime : startTime;
     
     if (baseTime > 0) {
-        const lapTimeMs = hitTime - baseTime; // ミリ秒で計算
+        const lapTimeMs = hitTime - baseTime; // ミリ秒単位のラップタイム
 
-        // GPS自動通過時のみ15秒フリーズ
+        // GPS自動通過時のみ15秒フリーズ表示
         if (!isManual) {
             isFrozen = true;
             freezeUntil = Date.now() + 15000;
             freezeDisplayTime = timeFormat(lapTimeMs);
         }
 
-        // セクター計算
+        // --- S4（S3～ゴール）の計算 ---
+        const lapTimeSec = lapTimeMs / 1000; // 全体のタイムを秒に変換
+        // S3を通過している場合のみ、全体からS3累積を引いてS4を算出
+        const s4_val = (s3_abs > 0) ? (lapTimeSec - s3_abs).toFixed(3) : "--.---";
+
+        // 各セクターの表示用テキスト作成
         const s1_text = s1_abs > 0 ? s1_abs.toFixed(3) : "--.---";
         const s2_text = (s2_abs > 0 && s1_abs > 0) ? (s2_abs - s1_abs).toFixed(3) : "--.---";
         const s3_text = (s3_abs > 0 && s2_abs > 0) ? (s3_abs - s2_abs).toFixed(3) : "--.---";
 
         const lapData = {
             no: lapRecords.length + 1,
-            time: lapTimeMs, // ★ミリ秒のまま保存する（重要！）
+            time: lapTimeMs, 
             s1: s1_text,
             s2: s2_text,
             s3: s3_text,
+            s4: s4_val, // 計算したS4を格納
             max: maxSpeedInLap,
             points: [...currentLapPoints]
         };
 
-        // 配列の「先頭」に追加（これで最新が常に上に来る）
+        // 配列の先頭に追加（最新が上に来る）
         lapRecords.unshift(lapData);
         updateLapList();
     }
@@ -181,9 +183,14 @@ function processLap(hitTime, isManual = false) {
     lapStartTime = hitTime;
     currentLapPoints = [];
     maxSpeedInLap = 0;
-    s1_abs = 0; s2_abs = 0; s3_abs = 0;
+    
+    // 全セクターの累積記録をリセット
+    s1_abs = 0; 
+    s2_abs = 0; 
+    s3_abs = 0; 
+    s4_abs = 0;
 
-    // 画面表示のリセット
+    // メイン画面のセクター表示をリセット
     document.getElementById('s1_val').textContent = "--.---";
     document.getElementById('s2_val').textContent = "--.---";
     document.getElementById('s3_val').textContent = "--.---";
@@ -425,7 +432,7 @@ document.getElementById('historyBtn').onclick = function() {
             <td>${r.s1}</td>
             <td>${r.s2}</td>
             <td>${r.s3}</td>
-            <td style="${r.time === bT ? 'color:var(--hrc-red);font-weight:bold;' : ''}">
+            <td>${r.s4}</td> <td style="${r.time === bT ? 'color:var(--hrc-red);font-weight:bold;' : ''}">
                 ${timeFormat(r.time)}
             </td>
             <td style="color:var(--hrc-orange);">${r.max}</td>
