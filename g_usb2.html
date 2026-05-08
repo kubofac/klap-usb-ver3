@@ -140,28 +140,24 @@ let lapCount = 1;
 let s1_abs = 0, s2_abs = 0, s3_abs = 0, s4_abs = 0; // s4_absを追加
     
 function processLap(hitTime, isManual = false) {
-    // 基準時間を決定（1周目ならstartTime、2周目以降ならlapStartTime）
     const baseTime = lapStartTime > 0 ? lapStartTime : startTime;
     
     if (baseTime > 0) {
-        const lapTimeMs = hitTime - baseTime; // ミリ秒単位のラップタイム
+        const lapTimeMs = hitTime - baseTime;
+        const lapTimeSec = lapTimeMs / 1000;
 
-        // GPS自動通過時のみ15秒フリーズ表示
         if (!isManual) {
             isFrozen = true;
             freezeUntil = Date.now() + 15000;
             freezeDisplayTime = timeFormat(lapTimeMs);
         }
 
-        // --- S4（S3～ゴール）の計算 ---
-        const lapTimeSec = lapTimeMs / 1000; // 全体のタイムを秒に変換
-        // S3を通過している場合のみ、全体からS3累積を引いてS4を算出
-        const s4_val = (s3_abs > 0) ? (lapTimeSec - s3_abs).toFixed(3) : "--.---";
-
-        // 各セクターの表示用テキスト作成
+        // セクター計算
         const s1_text = s1_abs > 0 ? s1_abs.toFixed(3) : "--.---";
         const s2_text = (s2_abs > 0 && s1_abs > 0) ? (s2_abs - s1_abs).toFixed(3) : "--.---";
         const s3_text = (s3_abs > 0 && s2_abs > 0) ? (s3_abs - s2_abs).toFixed(3) : "--.---";
+        // S4: ゴール通過時間(lapTimeSec) - S3通過時間
+        const s4_text = (s3_abs > 0) ? (lapTimeSec - s3_abs).toFixed(3) : "--.---";
 
         const lapData = {
             no: lapRecords.length + 1,
@@ -169,31 +165,23 @@ function processLap(hitTime, isManual = false) {
             s1: s1_text,
             s2: s2_text,
             s3: s3_text,
-            s4: s4_val, // 計算したS4を格納
+            s4: s4_text,
             max: maxSpeedInLap,
             points: [...currentLapPoints]
         };
 
-        // 配列の先頭に追加（最新が上に来る）
         lapRecords.unshift(lapData);
         updateLapList();
     }
 
-    // 次の周回への準備
     lapStartTime = hitTime;
     currentLapPoints = [];
     maxSpeedInLap = 0;
+    s1_abs = 0; s2_abs = 0; s3_abs = 0;
     
-    // 全セクターの累積記録をリセット
-    s1_abs = 0; 
-    s2_abs = 0; 
-    s3_abs = 0; 
-    s4_abs = 0;
-
-    // メイン画面のセクター表示をリセット
-    document.getElementById('s1_val').textContent = "--.---";
-    document.getElementById('s2_val').textContent = "--.---";
-    document.getElementById('s3_val').textContent = "--.---";
+    document.querySelectorAll('[id$="_val"]').forEach(el => {
+        if(el.id.startsWith('s')) el.textContent = "--.---";
+    });
 }
 
 function updateLapList() {
@@ -304,62 +292,52 @@ document.getElementById('gpxBtn').onclick = function() {
         return;
     }
 
-    // 1. セクター座標を解析ソフトに伝えるためのメタデータ作成
-    let lineDesc = "";
+    // ライン情報を metadata/desc に標準化して格納
+    let lineMeta = "";
     if (lines.startLine) {
-        lineDesc = `LINE_DATA[SL:${lines.startLine.p1.lat},${lines.startLine.p1.lon},${lines.startLine.p2.lat},${lines.startLine.p2.lon}`;
-        if (lines.s1Line) lineDesc += `|S1:${lines.s1Line.p1.lat},${lines.s1Line.p1.lon},${lines.s1Line.p2.lat},${lines.s1Line.p2.lon}`;
-        if (lines.s2Line) lineDesc += `|S2:${lines.s2Line.p1.lat},${lines.s2Line.p1.lon},${lines.s2Line.p2.lat},${lines.s2Line.p2.lon}`;
-        if (lines.s3Line) lineDesc += `|S3:${lines.s3Line.p1.lat},${lines.s3Line.p1.lon},${lines.s3Line.p2.lat},${lines.s3Line.p2.lon}`;
-        lineDesc += `]`;
+        const l = lines;
+        lineMeta = `[SL:${l.startLine.p1.lat},${l.startLine.p1.lon},${l.startLine.p2.lat},${l.startLine.p2.lon}]`;
+        if (l.s1Line) lineMeta += `[S1:${l.s1Line.p1.lat},${l.s1Line.p1.lon},${l.s1Line.p2.lat},${l.s1Line.p2.lon}]`;
+        if (l.s2Line) lineMeta += `[S2:${l.s2Line.p1.lat},${l.s2Line.p1.lon},${l.s2Line.p2.lat},${l.s2Line.p2.lon}]`;
+        if (l.s3Line) lineMeta += `[S3:${l.s3Line.p1.lat},${l.s3Line.p1.lon},${l.s3Line.p2.lat},${l.s3Line.p2.lon}]`;
     }
 
-    // 2. GPXヘッダー作成
     let gpx = `<?xml version="1.0" encoding="UTF-8"?>
-<gpx version="1.1" creator="KLAP_DEGI" xmlns="http://www.topografix.com/GPX/1/1">
+<gpx version="1.1" creator="KLAP_DEGI_V12" xmlns="http://www.topografix.com/GPX/1/1">
 <metadata>
-    <desc>${lineDesc}</desc>
+    <name>KLAP Session ${new Date().toLocaleString()}</name>
+    <desc>LINE_DATA:${lineMeta}</desc>
 </metadata>
 <trk>
-<name>KLAP_DATA_${new Date().toLocaleDateString()}</name>`;
+<name>Track_Log</name>`;
 
-    // 3. ラップごとに <trkseg> で区切って出力（古い順に並び替え）
+    // 解析ソフトが時系列で読み込めるよう、古い周回(reverse)から順に出力
     const sortedLaps = [...lapRecords].reverse();
 
-    sortedLaps.forEach(lap => {
-        gpx += `\n<trkseg>`; 
-        if (lap.points && lap.points.length > 0) {
-            lap.points.forEach(p => {
-                const speedMS = (p.speed / 3.6).toFixed(2);
-                gpx += `\n<trkpt lat="${p.lat}" lon="${p.lon}">
-<time>${p.time}</time>
-<extensions><speed>${speedMS}</speed></extensions>
-</trkpt>`;
-            });
-        }
+    sortedLaps.forEach((lap) => {
+        if (lap.points.length < 2) return; // ポイントが少なすぎるラップは除外
+
+        gpx += `\n<trkseg>`;
+        // 解析ソフト用に各ラップの統計をコメント等で入れると親切ですが、
+        // ここでは純粋なポイントデータを出力します
+        lap.points.forEach(p => {
+            const isoTime = p.time; // すでに ISO 形式
+            const speedMS = (p.speed / 3.6).toFixed(2);
+            gpx += `\n<trkpt lat="${p.lat}" lon="${p.lon}"><time>${isoTime}</time><extensions><speed>${speedMS}</speed></extensions></trkpt>`;
+        });
         gpx += `\n</trkseg>`;
     });
 
-    // 4. GPXフッター
     gpx += `\n</trk>\n</gpx>`;
 
-    // 5. 保存実行
-    try {
-        const blob = new Blob([gpx], { type: 'application/gpx+xml' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        const filename = `klap_${new Date().toISOString().replace(/[:.]/g, '-')}.gpx`;
-        a.href = url;
-        a.download = filename;
-        document.body.appendChild(a);
-        a.click();
-        setTimeout(() => {
-            document.body.removeChild(a);
-            window.URL.revokeObjectURL(url);
-        }, 100);
-    } catch (err) {
-        alert("GPX保存失敗: " + err);
-    }
+    // ダウンロード処理
+    const blob = new Blob([gpx], { type: 'application/gpx+xml' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `KLAP_${new Date().getTime()}.gpx`;
+    a.click();
+    URL.revokeObjectURL(url);
 };
 
 // 1. 交点計算と方向判定（外積）を行う関数
