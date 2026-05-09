@@ -152,12 +152,24 @@ function processLap(hitTime, isManual = false) {
             freezeDisplayTime = timeFormat(lapTimeMs);
         }
 
-        // セクター計算
+        // --- セクター計算 ---
         const s1_text = s1_abs > 0 ? s1_abs.toFixed(3) : "--.---";
         const s2_text = (s2_abs > 0 && s1_abs > 0) ? (s2_abs - s1_abs).toFixed(3) : "--.---";
         const s3_text = (s3_abs > 0 && s2_abs > 0) ? (s3_abs - s2_abs).toFixed(3) : "--.---";
-        // S4: ゴール通過時間(lapTimeSec) - S3通過時間
-        const s4_text = (s3_abs > 0) ? (lapTimeSec - s3_abs).toFixed(3) : "--.---";
+        
+        // --- S4の計算ロジック（柔軟な判定） ---
+        // S3があればS3から、なければS2から、それもなければS1から、最後はスタートからの時間をS4とする
+        let s4_text = "--.---";
+        if (s3_abs > 0) {
+            s4_text = (lapTimeSec - s3_abs).toFixed(3);
+        } else if (s2_abs > 0) {
+            s4_text = (lapTimeSec - s2_abs).toFixed(3);
+        } else if (s1_abs > 0) {
+            s4_text = (lapTimeSec - s1_abs).toFixed(3);
+        } else {
+            // セクターを一つも通らなかった場合はラップタイムそのものがS4
+            s4_text = lapTimeSec.toFixed(3);
+        }
 
         const lapData = {
             no: lapRecords.length + 1,
@@ -165,7 +177,7 @@ function processLap(hitTime, isManual = false) {
             s1: s1_text,
             s2: s2_text,
             s3: s3_text,
-            s4: s4_text,
+            s4: s4_text, 
             max: maxSpeedInLap,
             points: [...currentLapPoints]
         };
@@ -174,6 +186,7 @@ function processLap(hitTime, isManual = false) {
         updateLapList();
     }
 
+    // --- 次のラップのためのリセット ---
     lapStartTime = hitTime;
     currentLapPoints = [];
     maxSpeedInLap = 0;
@@ -183,7 +196,6 @@ function processLap(hitTime, isManual = false) {
         if(el.id.startsWith('s')) el.textContent = "--.---";
     });
 }
-
 function updateLapList() {
     if (lapRecords.length === 0) return;
 
