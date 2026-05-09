@@ -138,6 +138,32 @@ let sectorDirections = { s1: null, s2: null, s3: null };
 let cooldownMs = 15000; // 15秒（ピットアウト直後の誤作動防止）  
 let lapCount = 1;
 let s1_abs = 0, s2_abs = 0, s3_abs = 0, s4_abs = 0; // s4_absを追加
+  /**
+ * NMEAのUTC時刻文字列をミリ秒に変換する
+ * @param {string} nmeaTime - "HHMMSS.SS" 形式の文字列
+ * @returns {number} 1日の経過ミリ秒
+ */
+// 時刻管理用の変数（スクリプト上部に追加）
+let lastNmeaMs = 0;
+let dayOffsetMs = 0;
+    
+function parseNmeaTimeToMs(nmeaTime) {
+    if (!nmeaTime || nmeaTime.length < 6) return 0;
+
+    const hh = parseInt(nmeaTime.substring(0, 2), 10);
+    const mm = parseInt(nmeaTime.substring(2, 4), 10);
+    const ss = parseFloat(nmeaTime.substring(4)); // 秒と小数点以下
+
+    // 1日の開始（00:00:00.000）からの累計ミリ秒を計算
+    let ms = ((hh * 3600) + (mm * 60) + ss) * 1000;
+
+    // 【重要】深夜の0時跨ぎ対応
+    // 走行中に日付が変わった場合、経過時間がマイナスにならないよう調整が必要
+    // 呼び出し側のロジックで前回時刻より大幅に小さい場合は +24時間(86400000ms) する処理を推奨
+    
+    return Math.round(ms);
+}
+
     
 function processLap(hitTime, isManual = false) {
     const baseTime = lapStartTime > 0 ? lapStartTime : startTime;
@@ -233,58 +259,85 @@ function mainLoop() {
 }
 
 // 2. 通過判定ロジック（各セクターの方向を個別に学習・記憶）
+// --- スクリプト上部で管理する変数 ---
+let lastNmeaMs = 0;
+let dayOffsetMs = 0;
+
 function parseNMEA(line) {
     if (!line.includes('RMC') && !line.includes('GGA')) return;
     const p = line.split(',');
-    
+
+    // 1. 時刻の抽出と衛星時刻への変換
+    const rawTime = p[1];
+    if (!rawTime) return;
+
+    let currentMs = parseNmeaTimeToMs(rawTime);
+
+    // 0時跨ぎ（日付変更）の補正
+    if (lastNmeaMs > 0 && (lastNmeaMs - currentMs) > 80000000) {
+        dayOffsetMs += 86400000; 
+    }
+    lastNmeaMs = currentMs;
+    const absoluteMs = currentMs + dayOffsetMs; // これを基準時刻にする
+
+    // 2. RMC文：速度情報の更新
     if (line.includes('RMC') && p[2] === 'A') {
         currentSpeedKmh = parseFloat(p[7]) * 1.852;
         if (currentSpeedKmh > maxSpeedInLap) maxSpeedInLap = Math.round(currentSpeedKmh);
     }
-    
+
+    // 3. GGA文：座標更新とライン交差判定
     if (line.includes('GGA') && (p[6] !== '0' && p[6] !== '')) {
-        const cur = { lat: dmmToDec(p[2], p[3]), lon: dmmToDec(p[4], p[5]), time: Date.now() };
-    
+        const cur = { 
+            lat: dmmToDec(p[2], p[3]), 
+            lon: dmmToDec(p[4], p[5]), 
+            time: absoluteMs // スマホ時刻ではなく衛星時刻を使用
+        };
+
         if (swState === 1) {
-            currentLapPoints.push({ lat: cur.lat, lon: cur.lon, time: new Date().toISOString(), speed: currentSpeedKmh });
-            
+            // ログ保存用のデータ。後で分析できるよう両方の時刻を持っておく
+            currentLapPoints.push({ 
+                lat: cur.lat, 
+                lon: cur.lon, 
+                time: new Date().toISOString(), // GPX出力用
+                nmeaTime: absoluteMs,           // 内部計算用
+                speed: currentSpeedKmh 
+            });
+
             if (lastPos) {
-                // --- 1. スタート/コントロールライン判定 ---
+                // --- A. スタート/コントロールライン判定 ---
                 const hitSL = getIntersection(lastPos, cur, lines.startLine);
                 if (hitSL) {
-                    // 初回通過時に方向を記憶
+                    // 初回通過時に方向を学習
                     if (validDirection === null) validDirection = hitSL.dir;
 
-                    // クールダウン（15秒）設定
+                    // 15秒のクールダウンと方向一致を確認
                     const cooldownMs = 15000; 
-
-                    // 記憶した方向と一致し、かつ15秒経過している場合のみラップ開始
-                    if (hitSL.dir === validDirection && (hitSL.time - (lapStartTime || startTime) > cooldownMs)) {
+                    if (hitSL.dir === validDirection && (hitSL.time - (lapStartTime || absoluteMs) > cooldownMs)) {
+                        // 衛星時刻ベースの通過タイムでラップ処理
                         processLap(hitSL.time, false);
                     }
                 }
 
-                // --- 2. セクターライン判定（V2.1 厳格仕様） ---
-                // スタートラインを通過（lapStartTime > 0）するまで、セクター判定は一切行わない
+                // --- B. セクターライン判定 (スタート通過後のみ) ---
                 if (lapStartTime > 0) {
                     ['s1', 's2', 's3'].forEach((s) => {
                         const hit = getIntersection(lastPos, cur, lines[s + 'Line']);
                         if (hit) {
-                            // 各セクターラインの通過方向を個別に記憶
                             if (sectorDirections[s] === null) sectorDirections[s] = hit.dir;
 
-                            // 記憶した方向と一致する場合のみ記録
                             if (hit.dir === sectorDirections[s]) {
-                                const absTime = (hit.time - lapStartTime) / 1000;
+                                // 衛星時刻ベースのラップ内経過時間(秒)を計算
+                                const absSec = (hit.time - lapStartTime) / 1000;
                                 
                                 if (s === 's1' && s1_abs === 0) {
-                                    s1_abs = absTime;
+                                    s1_abs = absSec;
                                     document.getElementById('s1_val').textContent = s1_abs.toFixed(3);
                                 } else if (s === 's2' && s2_abs === 0 && s1_abs > 0) {
-                                    s2_abs = absTime;
+                                    s2_abs = absSec;
                                     document.getElementById('s2_val').textContent = (s2_abs - s1_abs).toFixed(3);
                                 } else if (s === 's3' && s3_abs === 0 && s2_abs > 0) {
-                                    s3_abs = absTime;
+                                    s3_abs = absSec;
                                     document.getElementById('s3_val').textContent = (s3_abs - s2_abs).toFixed(3);
                                 }
                             }
@@ -398,7 +451,13 @@ document.getElementById('startBtn').onclick = function() {
     }
 };
 document.getElementById('lapBtn').onclick = function() {
-    if (swState === 1) processLap(Date.now(), true);
+    if (swState === 1) {
+        // スマホ時刻(Date.now)ではなく、直近の衛星時刻(lastNmeaMs + dayOffsetMs)を使う
+        const currentAbsoluteMs = lastNmeaMs + dayOffsetMs;
+        // もしGPSがまだ受信できていない場合はDate.nowで代用（安全策）
+        const finalTime = currentAbsoluteMs > 0 ? currentAbsoluteMs : Date.now();
+        processLap(finalTime, true);
+    }
     else if (confirm("RESET ALL?")) location.reload();
 };
 document.getElementById('usbGpsBtn').onclick = async function() {
