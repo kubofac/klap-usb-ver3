@@ -3,12 +3,12 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>KLAP_DEGI_LAPTIMER - V13.0</title>
+    <title>KLAP_DEGI_LAPTIMER - V12.6</title>
     <style>
         :root { --hrc-red: #E4002B; --hrc-white: #ffffff; --bg-dark: #000000; --hrc-orange: #FFA500; }
         body, html { margin: 0; padding: 0; width: 100%; height: 100%; background-color: var(--bg-dark); color: var(--hrc-white); font-family: 'Arial Black', sans-serif; overflow: hidden; }
         #dashboard { position: relative; width: 100vw; height: 100dvh; }
-        
+
         /* メインUI */
         .main-ui-container { position: absolute; left: 32%; top: 42%; transform: translate(-50%, -50%); display: flex; flex-direction: column; align-items: center; z-index: 5; width: 60%; }
         #display1 { font-size: 19vh; font-weight: 900; line-height: 0.8; white-space: nowrap; }
@@ -138,40 +138,10 @@ let sectorDirections = { s1: null, s2: null, s3: null };
 let cooldownMs = 15000; // 15秒（ピットアウト直後の誤作動防止）  
 let lapCount = 1;
 let s1_abs = 0, s2_abs = 0, s3_abs = 0, s4_abs = 0; // s4_absを追加
-let lastNmeaMs = 0;
-let dayOffsetMs = 0;
-function parseNmeaTimeToMs(nmeaTime) {
-    if (!nmeaTime || nmeaTime.length < 6) return 0;
 
-    const hh = parseInt(nmeaTime.substring(0, 2), 10);
-    const mm = parseInt(nmeaTime.substring(2, 4), 10);
-    const ss = parseFloat(nmeaTime.substring(4)); // 秒と小数点以下
-
-    // 1日の開始（00:00:00.000）からの累計ミリ秒を計算
-    let ms = ((hh * 3600) + (mm * 60) + ss) * 1000;
-
-    // 【重要】深夜の0時跨ぎ対応
-    // 走行中に日付が変わった場合、経過時間がマイナスにならないよう調整が必要
-    // 呼び出し側のロジックで前回時刻より大幅に小さい場合は +24時間(86400000ms) する処理を推奨
-    
-    return Math.round(ms);
-}
-
-
-    
-  /**
- * NMEAのUTC時刻文字列をミリ秒に変換する
- * @param {string} nmeaTime - "HHMMSS.SS" 形式の文字列
- * @returns {number} 1日の経過ミリ秒
- */
-// 時刻管理用の変数（スクリプト上部に追加）
-
-    
-
-    
 function processLap(hitTime, isManual = false) {
     const baseTime = lapStartTime > 0 ? lapStartTime : startTime;
-    
+
     if (baseTime > 0) {
         const lapTimeMs = hitTime - baseTime;
         const lapTimeSec = lapTimeMs / 1000;
@@ -182,10 +152,13 @@ function processLap(hitTime, isManual = false) {
             freezeDisplayTime = timeFormat(lapTimeMs);
         }
 
+        // セクター計算
         // --- セクター計算 ---
         const s1_text = s1_abs > 0 ? s1_abs.toFixed(3) : "--.---";
         const s2_text = (s2_abs > 0 && s1_abs > 0) ? (s2_abs - s1_abs).toFixed(3) : "--.---";
         const s3_text = (s3_abs > 0 && s2_abs > 0) ? (s3_abs - s2_abs).toFixed(3) : "--.---";
+        // S4: ゴール通過時間(lapTimeSec) - S3通過時間
+        const s4_text = (s3_abs > 0) ? (lapTimeSec - s3_abs).toFixed(3) : "--.---";
         
         // --- S4の計算ロジック（柔軟な判定） ---
         // S3があればS3から、なければS2から、それもなければS1から、最後はスタートからの時間をS4とする
@@ -207,6 +180,7 @@ function processLap(hitTime, isManual = false) {
             s1: s1_text,
             s2: s2_text,
             s3: s3_text,
+            s4: s4_text,
             s4: s4_text, 
             max: maxSpeedInLap,
             points: [...currentLapPoints]
@@ -221,11 +195,12 @@ function processLap(hitTime, isManual = false) {
     currentLapPoints = [];
     maxSpeedInLap = 0;
     s1_abs = 0; s2_abs = 0; s3_abs = 0;
-    
+
     document.querySelectorAll('[id$="_val"]').forEach(el => {
         if(el.id.startsWith('s')) el.textContent = "--.---";
     });
 }
+
 function updateLapList() {
     if (lapRecords.length === 0) return;
 
@@ -242,7 +217,9 @@ function updateLapList() {
             <span>L${r.no}</span>
             <span>${timeFormat(r.time)}</span>
         </div>`).join('');
+}
 
+function updateLapList() {
     if (lapRecords.length === 0) return;
     const bestTime = Math.min(...lapRecords.map(r => r.time));
     document.getElementById('best-display').innerHTML = `<span class="best-label">BEST LAP</span>${timeFormat(bestTime)}`;
@@ -261,84 +238,58 @@ function mainLoop() {
 }
 
 // 2. 通過判定ロジック（各セクターの方向を個別に学習・記憶）
-
-
-
 function parseNMEA(line) {
     if (!line.includes('RMC') && !line.includes('GGA')) return;
     const p = line.split(',');
 
-    // 1. 時刻の抽出と衛星時刻への変換
-    const rawTime = p[1];
-    if (!rawTime) return;
-
-    let currentMs = parseNmeaTimeToMs(rawTime);
-
-    // 0時跨ぎ（日付変更）の補正
-    if (lastNmeaMs > 0 && (lastNmeaMs - currentMs) > 80000000) {
-        dayOffsetMs += 86400000; 
-    }
-    lastNmeaMs = currentMs;
-    const absoluteMs = currentMs + dayOffsetMs; // これを基準時刻にする
-
-    // 2. RMC文：速度情報の更新
     if (line.includes('RMC') && p[2] === 'A') {
         currentSpeedKmh = parseFloat(p[7]) * 1.852;
         if (currentSpeedKmh > maxSpeedInLap) maxSpeedInLap = Math.round(currentSpeedKmh);
     }
 
-    // 3. GGA文：座標更新とライン交差判定
     if (line.includes('GGA') && (p[6] !== '0' && p[6] !== '')) {
-        const cur = { 
-            lat: dmmToDec(p[2], p[3]), 
-            lon: dmmToDec(p[4], p[5]), 
-            time: absoluteMs // スマホ時刻ではなく衛星時刻を使用
-        };
+        const cur = { lat: dmmToDec(p[2], p[3]), lon: dmmToDec(p[4], p[5]), time: Date.now() };
 
         if (swState === 1) {
-            // ログ保存用のデータ。後で分析できるよう両方の時刻を持っておく
-            currentLapPoints.push({ 
-                lat: cur.lat, 
-                lon: cur.lon, 
-                time: new Date().toISOString(), // GPX出力用
-                nmeaTime: absoluteMs,           // 内部計算用
-                speed: currentSpeedKmh 
-            });
+            currentLapPoints.push({ lat: cur.lat, lon: cur.lon, time: new Date().toISOString(), speed: currentSpeedKmh });
 
             if (lastPos) {
-                // --- A. スタート/コントロールライン判定 ---
+                // --- 1. スタート/コントロールライン判定 ---
                 const hitSL = getIntersection(lastPos, cur, lines.startLine);
                 if (hitSL) {
-                    // 初回通過時に方向を学習
+                    // 初回通過時に方向を記憶
                     if (validDirection === null) validDirection = hitSL.dir;
 
-                    // 15秒のクールダウンと方向一致を確認
+                    // クールダウン（15秒）設定
                     const cooldownMs = 15000; 
-                    if (hitSL.dir === validDirection && (hitSL.time - (lapStartTime || absoluteMs) > cooldownMs)) {
-                        // 衛星時刻ベースの通過タイムでラップ処理
+
+                    // 記憶した方向と一致し、かつ15秒経過している場合のみラップ開始
+                    if (hitSL.dir === validDirection && (hitSL.time - (lapStartTime || startTime) > cooldownMs)) {
                         processLap(hitSL.time, false);
                     }
                 }
 
-                // --- B. セクターライン判定 (スタート通過後のみ) ---
+                // --- 2. セクターライン判定（V2.1 厳格仕様） ---
+                // スタートラインを通過（lapStartTime > 0）するまで、セクター判定は一切行わない
                 if (lapStartTime > 0) {
                     ['s1', 's2', 's3'].forEach((s) => {
                         const hit = getIntersection(lastPos, cur, lines[s + 'Line']);
                         if (hit) {
+                            // 各セクターラインの通過方向を個別に記憶
                             if (sectorDirections[s] === null) sectorDirections[s] = hit.dir;
 
+                            // 記憶した方向と一致する場合のみ記録
                             if (hit.dir === sectorDirections[s]) {
-                                // 衛星時刻ベースのラップ内経過時間(秒)を計算
-                                const absSec = (hit.time - lapStartTime) / 1000;
-                                
+                                const absTime = (hit.time - lapStartTime) / 1000;
+
                                 if (s === 's1' && s1_abs === 0) {
-                                    s1_abs = absSec;
+                                    s1_abs = absTime;
                                     document.getElementById('s1_val').textContent = s1_abs.toFixed(3);
                                 } else if (s === 's2' && s2_abs === 0 && s1_abs > 0) {
-                                    s2_abs = absSec;
+                                    s2_abs = absTime;
                                     document.getElementById('s2_val').textContent = (s2_abs - s1_abs).toFixed(3);
                                 } else if (s === 's3' && s3_abs === 0 && s2_abs > 0) {
-                                    s3_abs = absSec;
+                                    s3_abs = absTime;
                                     document.getElementById('s3_val').textContent = (s3_abs - s2_abs).toFixed(3);
                                 }
                             }
@@ -411,13 +362,13 @@ function getIntersection(p1, p2, line) {
     if (!line) return null;
     const x1 = p1.lon, y1 = p1.lat, x2 = p2.lon, y2 = p2.lat;
     const x3 = line.p1.lon, y3 = line.p1.lat, x4 = line.p2.lon, y4 = line.p2.lat;
-    
+
     const den = (y4 - y3) * (x2 - x1) - (x4 - x3) * (y2 - y1);
     if (Math.abs(den) < 1e-12) return null;
-    
+
     const t = ((x4 - x3) * (y1 - y3) - (y4 - y3) * (x1 - x3)) / den;
     const u = ((x2 - x1) * (y1 - y3) - (y2 - y1) * (x1 - x3)) / den;
-    
+
     // ラインを跨いだ場合（予測時刻を計算）
     if (t >= 0 && t <= 1 && u >= 0 && u <= 1) {
         // 方向判定（外積を用いて左右どちらから進入したかを算出）
@@ -426,7 +377,7 @@ function getIntersection(p1, p2, line) {
         const Vx = x2 - x1;
         const Vy = y2 - y1;
         const dir = (Lx * Vy - Ly * Vx) > 0 ? 1 : -1;
-        
+
         return { 
             time: p1.time + (p2.time - p1.time) * t,
             dir: dir 
@@ -452,13 +403,7 @@ document.getElementById('startBtn').onclick = function() {
     }
 };
 document.getElementById('lapBtn').onclick = function() {
-    if (swState === 1) {
-        // スマホ時刻(Date.now)ではなく、直近の衛星時刻(lastNmeaMs + dayOffsetMs)を使う
-        const currentAbsoluteMs = lastNmeaMs + dayOffsetMs;
-        // もしGPSがまだ受信できていない場合はDate.nowで代用（安全策）
-        const finalTime = currentAbsoluteMs > 0 ? currentAbsoluteMs : Date.now();
-        processLap(finalTime, true);
-    }
+    if (swState === 1) processLap(Date.now(), true);
     else if (confirm("RESET ALL?")) location.reload();
 };
 document.getElementById('usbGpsBtn').onclick = async function() {
@@ -475,7 +420,7 @@ document.getElementById('usbGpsBtn').onclick = async function() {
 document.getElementById('historyBtn').onclick = function() {
     if (lapRecords.length === 0) return;
     const bT = Math.min(...lapRecords.map(r => r.time));
-    
+
     document.getElementById('history-body').innerHTML = lapRecords.map(r => `
         <tr>
             <td>${r.no}</td>
