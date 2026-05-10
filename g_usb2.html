@@ -307,52 +307,66 @@ document.getElementById('gpxBtn').onclick = function() {
         return;
     }
 
-    // ライン情報を metadata/desc に標準化して格納
-    let lineMeta = "";
-    if (lines.startLine) {
-        const l = lines;
-        lineMeta = `[SL:${l.startLine.p1.lat},${l.startLine.p1.lon},${l.startLine.p2.lat},${l.startLine.p2.lon}]`;
-        if (l.s1Line) lineMeta += `[S1:${l.s1Line.p1.lat},${l.s1Line.p1.lon},${l.s1Line.p2.lat},${l.s1Line.p2.lon}]`;
-        if (l.s2Line) lineMeta += `[S2:${l.s2Line.p1.lat},${l.s2Line.p1.lon},${l.s2Line.p2.lat},${l.s2Line.p2.lon}]`;
-        if (l.s3Line) lineMeta += `[S3:${l.s3Line.p1.lat},${l.s3Line.p1.lon},${l.s3Line.p2.lat},${l.s3Line.p2.lon}]`;
-    }
+    // --- 1. ライン情報を localStorage から確実に取得 (getL関数の復元) ---
+    const getL = (key) => {
+        const p1Lat = localStorage.getItem(key + 'P1Lat');
+        if (!p1Lat) return "";
+        return `${p1Lat},${localStorage.getItem(key + 'P1Lon')},${localStorage.getItem(key + 'P2Lat')},${localStorage.getItem(key + 'P2Lon')}`;
+    };
 
+    const sl = getL('startLine');
+    const s1 = getL('s1Line');
+    const s2 = getL('s2Line');
+    const s3 = getL('s3Line');
+    
+    // 解析ソフトがパースしやすい | (パイプ) 区切り形式
+    let lineMeta = `SL:${sl}`;
+    if (s1) lineMeta += `|S1:${s1}`;
+    if (s2) lineMeta += `|S2:${s2}`;
+    if (s3) lineMeta += `|S3:${s3}`;
+
+    // GPXヘッダー
     let gpx = `<?xml version="1.0" encoding="UTF-8"?>
 <gpx version="1.1" creator="KLAP_DEGI_V12" xmlns="http://www.topografix.com/GPX/1/1">
 <metadata>
     <name>KLAP Session ${new Date().toLocaleString()}</name>
-    <desc>LINE_DATA:${lineMeta}</desc>
+    <desc>LINE_DATA[${lineMeta}]</desc>
 </metadata>
 <trk>
-<name>Track_Log</name>`;
+<name>Track_Log</name>
+<trkseg>`; // セグメントはここで1回だけ開始
 
-    // 解析ソフトが時系列で読み込めるよう、古い周回(reverse)から順に出力
+    // --- 2. ポイントの書き出し（単一セグメント化して連続性を確保） ---
+    // 古い周回から順に並べて出力
     const sortedLaps = [...lapRecords].reverse();
 
     sortedLaps.forEach((lap) => {
-        if (lap.points.length < 2) return; // ポイントが少なすぎるラップは除外
-
-        gpx += `\n<trkseg>`;
-        // 解析ソフト用に各ラップの統計をコメント等で入れると親切ですが、
-        // ここでは純粋なポイントデータを出力します
-        lap.points.forEach(p => {
-            const isoTime = p.time; // すでに ISO 形式
-            const speedMS = (p.speed / 3.6).toFixed(2);
-            gpx += `\n<trkpt lat="${p.lat}" lon="${p.lon}"><time>${isoTime}</time><extensions><speed>${speedMS}</speed></extensions></trkpt>`;
-        });
-        gpx += `\n</trkseg>`;
+        if (lap.points && lap.points.length > 0) {
+            lap.points.forEach(p => {
+                const speedMS = (p.speed / 3.6).toFixed(2);
+                gpx += `\n<trkpt lat="${p.lat}" lon="${p.lon}"><time>${p.time}</time><extensions><speed>${speedMS}</speed></extensions></trkpt>`;
+            });
+        }
     });
 
-    gpx += `\n</trk>\n</gpx>`;
+    gpx += `\n</trkseg>\n</trk>\n</gpx>`;
 
-    // ダウンロード処理
+    // --- 3. ダウンロード処理（WebShare不使用・直接保存） ---
+    const filename = `KLAP_${new Date().getTime()}.gpx`;
     const blob = new Blob([gpx], { type: 'application/gpx+xml' });
     const url = URL.createObjectURL(blob);
+    
     const a = document.createElement('a');
     a.href = url;
-    a.download = `KLAP_${new Date().getTime()}.gpx`;
+    a.download = filename;
+    document.body.appendChild(a);
     a.click();
-    URL.revokeObjectURL(url);
+    
+    // 後処理
+    setTimeout(() => {
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+    }, 100);
 };
 
 // 1. 交点計算と方向判定（外積）を行う関数
@@ -387,7 +401,17 @@ function getIntersection(p1, p2, line) {
 
 function dmmToDec(d, dir){ if(!d) return 0; const dot=d.indexOf('.'); const deg=parseInt(d.substring(0,dot-2)), min=parseFloat(d.substring(dot-2)); return (dir==='S'||dir==='W')?-(deg+min/60):(deg+min/60); }
 function timeFormat(ms){ const m=Math.floor(ms/60000), s=Math.floor((ms%60000)/1000), ms2=Math.floor(ms%1000); return `${m.toString().padStart(2,'0')}:${s.toString().padStart(2,'0')}.${ms2.toString().padStart(3,'0')}`; }
-
+// ダウンロード用ヘルパー関数（末尾に追加してください）
+function downloadFallback(blob, filename) {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
 // 3. STARTボタン（走行開始時に記憶をリセット）
 document.getElementById('startBtn').onclick = function() {
     if (swState !== 1) { 
