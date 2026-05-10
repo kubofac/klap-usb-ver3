@@ -138,15 +138,8 @@ let sectorDirections = { s1: null, s2: null, s3: null };
 let cooldownMs = 15000; // 15秒（ピットアウト直後の誤作動防止）  
 let lapCount = 1;
 let s1_abs = 0, s2_abs = 0, s3_abs = 0, s4_abs = 0; // s4_absを追加
-  /**
- * NMEAのUTC時刻文字列をミリ秒に変換する
- * @param {string} nmeaTime - "HHMMSS.SS" 形式の文字列
- * @returns {number} 1日の経過ミリ秒
- */
-// 時刻管理用の変数（スクリプト上部に追加）
 let lastNmeaMs = 0;
 let dayOffsetMs = 0;
-    
 function parseNmeaTimeToMs(nmeaTime) {
     if (!nmeaTime || nmeaTime.length < 6) return 0;
 
@@ -163,6 +156,17 @@ function parseNmeaTimeToMs(nmeaTime) {
     
     return Math.round(ms);
 }
+
+
+    
+  /**
+ * NMEAのUTC時刻文字列をミリ秒に変換する
+ * @param {string} nmeaTime - "HHMMSS.SS" 形式の文字列
+ * @returns {number} 1日の経過ミリ秒
+ */
+// 時刻管理用の変数（スクリプト上部に追加）
+
+    
 
     
 function processLap(hitTime, isManual = false) {
@@ -238,9 +242,7 @@ function updateLapList() {
             <span>L${r.no}</span>
             <span>${timeFormat(r.time)}</span>
         </div>`).join('');
-}
 
-function updateLapList() {
     if (lapRecords.length === 0) return;
     const bestTime = Math.min(...lapRecords.map(r => r.time));
     document.getElementById('best-display').innerHTML = `<span class="best-label">BEST LAP</span>${timeFormat(bestTime)}`;
@@ -259,9 +261,8 @@ function mainLoop() {
 }
 
 // 2. 通過判定ロジック（各セクターの方向を個別に学習・記憶）
-// --- スクリプト上部で管理する変数 ---
-let lastNmeaMs = 0;
-let dayOffsetMs = 0;
+
+
 
 function parseNMEA(line) {
     if (!line.includes('RMC') && !line.includes('GGA')) return;
