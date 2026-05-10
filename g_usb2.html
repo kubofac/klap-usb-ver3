@@ -8,7 +8,7 @@
         :root { --hrc-red: #E4002B; --hrc-white: #ffffff; --bg-dark: #000000; --hrc-orange: #FFA500; }
         body, html { margin: 0; padding: 0; width: 100%; height: 100%; background-color: var(--bg-dark); color: var(--hrc-white); font-family: 'Arial Black', sans-serif; overflow: hidden; }
         #dashboard { position: relative; width: 100vw; height: 100dvh; }
-
+        
         /* メインUI */
         .main-ui-container { position: absolute; left: 32%; top: 42%; transform: translate(-50%, -50%); display: flex; flex-direction: column; align-items: center; z-index: 5; width: 60%; }
         #display1 { font-size: 19vh; font-weight: 900; line-height: 0.8; white-space: nowrap; }
@@ -138,10 +138,10 @@ let sectorDirections = { s1: null, s2: null, s3: null };
 let cooldownMs = 15000; // 15秒（ピットアウト直後の誤作動防止）  
 let lapCount = 1;
 let s1_abs = 0, s2_abs = 0, s3_abs = 0, s4_abs = 0; // s4_absを追加
-
+    
 function processLap(hitTime, isManual = false) {
     const baseTime = lapStartTime > 0 ? lapStartTime : startTime;
-
+    
     if (baseTime > 0) {
         const lapTimeMs = hitTime - baseTime;
         const lapTimeSec = lapTimeMs / 1000;
@@ -153,26 +153,11 @@ function processLap(hitTime, isManual = false) {
         }
 
         // セクター計算
-        // --- セクター計算 ---
         const s1_text = s1_abs > 0 ? s1_abs.toFixed(3) : "--.---";
         const s2_text = (s2_abs > 0 && s1_abs > 0) ? (s2_abs - s1_abs).toFixed(3) : "--.---";
         const s3_text = (s3_abs > 0 && s2_abs > 0) ? (s3_abs - s2_abs).toFixed(3) : "--.---";
         // S4: ゴール通過時間(lapTimeSec) - S3通過時間
         const s4_text = (s3_abs > 0) ? (lapTimeSec - s3_abs).toFixed(3) : "--.---";
-        
-        // --- S4の計算ロジック（柔軟な判定） ---
-        // S3があればS3から、なければS2から、それもなければS1から、最後はスタートからの時間をS4とする
-        let s4_text = "--.---";
-        if (s3_abs > 0) {
-            s4_text = (lapTimeSec - s3_abs).toFixed(3);
-        } else if (s2_abs > 0) {
-            s4_text = (lapTimeSec - s2_abs).toFixed(3);
-        } else if (s1_abs > 0) {
-            s4_text = (lapTimeSec - s1_abs).toFixed(3);
-        } else {
-            // セクターを一つも通らなかった場合はラップタイムそのものがS4
-            s4_text = lapTimeSec.toFixed(3);
-        }
 
         const lapData = {
             no: lapRecords.length + 1,
@@ -181,7 +166,6 @@ function processLap(hitTime, isManual = false) {
             s2: s2_text,
             s3: s3_text,
             s4: s4_text,
-            s4: s4_text, 
             max: maxSpeedInLap,
             points: [...currentLapPoints]
         };
@@ -190,12 +174,11 @@ function processLap(hitTime, isManual = false) {
         updateLapList();
     }
 
-    // --- 次のラップのためのリセット ---
     lapStartTime = hitTime;
     currentLapPoints = [];
     maxSpeedInLap = 0;
     s1_abs = 0; s2_abs = 0; s3_abs = 0;
-
+    
     document.querySelectorAll('[id$="_val"]').forEach(el => {
         if(el.id.startsWith('s')) el.textContent = "--.---";
     });
@@ -241,18 +224,18 @@ function mainLoop() {
 function parseNMEA(line) {
     if (!line.includes('RMC') && !line.includes('GGA')) return;
     const p = line.split(',');
-
+    
     if (line.includes('RMC') && p[2] === 'A') {
         currentSpeedKmh = parseFloat(p[7]) * 1.852;
         if (currentSpeedKmh > maxSpeedInLap) maxSpeedInLap = Math.round(currentSpeedKmh);
     }
-
+    
     if (line.includes('GGA') && (p[6] !== '0' && p[6] !== '')) {
         const cur = { lat: dmmToDec(p[2], p[3]), lon: dmmToDec(p[4], p[5]), time: Date.now() };
-
+    
         if (swState === 1) {
             currentLapPoints.push({ lat: cur.lat, lon: cur.lon, time: new Date().toISOString(), speed: currentSpeedKmh });
-
+            
             if (lastPos) {
                 // --- 1. スタート/コントロールライン判定 ---
                 const hitSL = getIntersection(lastPos, cur, lines.startLine);
@@ -281,7 +264,7 @@ function parseNMEA(line) {
                             // 記憶した方向と一致する場合のみ記録
                             if (hit.dir === sectorDirections[s]) {
                                 const absTime = (hit.time - lapStartTime) / 1000;
-
+                                
                                 if (s === 's1' && s1_abs === 0) {
                                     s1_abs = absTime;
                                     document.getElementById('s1_val').textContent = s1_abs.toFixed(3);
@@ -362,13 +345,13 @@ function getIntersection(p1, p2, line) {
     if (!line) return null;
     const x1 = p1.lon, y1 = p1.lat, x2 = p2.lon, y2 = p2.lat;
     const x3 = line.p1.lon, y3 = line.p1.lat, x4 = line.p2.lon, y4 = line.p2.lat;
-
+    
     const den = (y4 - y3) * (x2 - x1) - (x4 - x3) * (y2 - y1);
     if (Math.abs(den) < 1e-12) return null;
-
+    
     const t = ((x4 - x3) * (y1 - y3) - (y4 - y3) * (x1 - x3)) / den;
     const u = ((x2 - x1) * (y1 - y3) - (y2 - y1) * (x1 - x3)) / den;
-
+    
     // ラインを跨いだ場合（予測時刻を計算）
     if (t >= 0 && t <= 1 && u >= 0 && u <= 1) {
         // 方向判定（外積を用いて左右どちらから進入したかを算出）
@@ -377,7 +360,7 @@ function getIntersection(p1, p2, line) {
         const Vx = x2 - x1;
         const Vy = y2 - y1;
         const dir = (Lx * Vy - Ly * Vx) > 0 ? 1 : -1;
-
+        
         return { 
             time: p1.time + (p2.time - p1.time) * t,
             dir: dir 
@@ -420,7 +403,7 @@ document.getElementById('usbGpsBtn').onclick = async function() {
 document.getElementById('historyBtn').onclick = function() {
     if (lapRecords.length === 0) return;
     const bT = Math.min(...lapRecords.map(r => r.time));
-
+    
     document.getElementById('history-body').innerHTML = lapRecords.map(r => `
         <tr>
             <td>${r.no}</td>
