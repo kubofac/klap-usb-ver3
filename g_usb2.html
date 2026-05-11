@@ -307,7 +307,7 @@ document.getElementById('gpxBtn').onclick = function() {
         return;
     }
 
-    // ライン情報を metadata/desc に標準化して格納
+    // ライン情報を維持（独自形式としてdescに格納）
     let lineMeta = "";
     if (lines.startLine) {
         const l = lines;
@@ -324,28 +324,25 @@ document.getElementById('gpxBtn').onclick = function() {
     <desc>LINE_DATA:${lineMeta}</desc>
 </metadata>
 <trk>
-<name>Track_Log</name>`;
+<name>Track_Log</name>
+<trkseg>`; // 全ラップを一つのtrksegにまとめる
 
-    // 解析ソフトが時系列で読み込めるよう、古い周回(reverse)から順に出力
-    const sortedLaps = [...lapRecords].reverse();
+    // ラップを時系列順（L1, L2, L3...）に並べ替え
+    const sortedLaps = [...lapRecords].sort((a, b) => a.no - b.no);
 
     sortedLaps.forEach((lap) => {
-        if (lap.points.length < 2) return; // ポイントが少なすぎるラップは除外
+        if (lap.points.length < 2) return;
 
-        gpx += `\n<trkseg>`;
-        // 解析ソフト用に各ラップの統計をコメント等で入れると親切ですが、
-        // ここでは純粋なポイントデータを出力します
         lap.points.forEach(p => {
-            const isoTime = p.time; // すでに ISO 形式
             const speedMS = (p.speed / 3.6).toFixed(2);
-            gpx += `\n<trkpt lat="${p.lat}" lon="${p.lon}"><time>${isoTime}</time><extensions><speed>${speedMS}</speed></extensions></trkpt>`;
+            // ISO 8601形式の時刻を確保
+            gpx += `\n<trkpt lat="${p.lat}" lon="${p.lon}"><time>${p.time}</time><extensions><speed>${speedMS}</speed></extensions></trkpt>`;
         });
-        gpx += `\n</trkseg>`;
     });
 
-    gpx += `\n</trk>\n</gpx>`;
+    gpx += `\n</trkseg>\n</trk>\n</gpx>`;
 
-    // ダウンロード処理
+    // ダウンロード
     const blob = new Blob([gpx], { type: 'application/gpx+xml' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
