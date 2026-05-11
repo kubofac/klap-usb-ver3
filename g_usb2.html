@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>KLAP_DEGI_LAPTIMER - V12.6</title>
+    <title>KLAP_DEGI_LAPTIMER - V12.7</title>
     <style>
         :root { --hrc-red: #E4002B; --hrc-white: #ffffff; --bg-dark: #000000; --hrc-orange: #FFA500; }
         body, html { margin: 0; padding: 0; width: 100%; height: 100%; background-color: var(--bg-dark); color: var(--hrc-white); font-family: 'Arial Black', sans-serif; overflow: hidden; }
@@ -199,23 +199,7 @@ function processLap(hitTime, isManual = false) {
         if(el.id.startsWith('s')) el.textContent = "--.---";
     });
 }
-function updateLapList() {
-    if (lapRecords.length === 0) return;
 
-    // ベストラップの算出（timeはミリ秒）
-    const bestTime = Math.min(...lapRecords.map(r => r.time));
-
-    // メイン画面のBEST表示を更新
-    document.getElementById('best-display').innerHTML = 
-        `<span class="best-label">BEST LAP</span>${timeFormat(bestTime)}`;
-
-    // メイン画面右側のラップリスト（最新5〜10件程度が表示される）
-    document.getElementById('lap').innerHTML = lapRecords.map(r => `
-        <div class="lap-row ${r.time === bestTime ? 'best-lap' : ''}">
-            <span>L${r.no}</span>
-            <span>${timeFormat(r.time)}</span>
-        </div>`).join('');
-}
 
 function updateLapList() {
     if (lapRecords.length === 0) return;
@@ -307,49 +291,61 @@ document.getElementById('gpxBtn').onclick = function() {
         return;
     }
 
-    // ライン情報を維持（独自形式としてdescに格納）
-    let lineMeta = "";
-    if (lines.startLine) {
-        const l = lines;
-        lineMeta = `[SL:${l.startLine.p1.lat},${l.startLine.p1.lon},${l.startLine.p2.lat},${l.startLine.p2.lon}]`;
-        if (l.s1Line) lineMeta += `[S1:${l.s1Line.p1.lat},${l.s1Line.p1.lon},${l.s1Line.p2.lat},${l.s1Line.p2.lon}]`;
-        if (l.s2Line) lineMeta += `[S2:${l.s2Line.p1.lat},${l.s2Line.p1.lon},${l.s2Line.p2.lat},${l.s2Line.p2.lon}]`;
-        if (l.s3Line) lineMeta += `[S3:${l.s3Line.p1.lat},${l.s3Line.p1.lon},${l.s3Line.p2.lat},${l.s3Line.p2.lon}]`;
-    }
+    // --- 1. ライン情報の生成（解析ソフト index.html 専用形式） ---
+    // localStorageから最新のライン情報を取得
+    const getL = (key) => {
+        const p1Lat = localStorage.getItem(key + 'P1Lat');
+        if (!p1Lat) return "";
+        return `${p1Lat},${localStorage.getItem(key + 'P1Lon')},${localStorage.getItem(key + 'P2Lat')},${localStorage.getItem(key + 'P2Lon')}`;
+    };
+
+    const sl = getL('startLine');
+    const s1 = getL('s1Line');
+    const s2 = getL('s2Line');
+    const s3 = getL('s3Line');
+    
+    // 解析ソフトが検索する "LINE_DATA[...]" の文字列を作成
+    let lineMeta = `SL:${sl}`;
+    if (s1) lineMeta += `|S1:${s1}`;
+    if (s2) lineMeta += `|S2:${s2}`;
+    if (s3) lineMeta += `|S3:${s3}`;
 
     let gpx = `<?xml version="1.0" encoding="UTF-8"?>
 <gpx version="1.1" creator="KLAP_DEGI_V12" xmlns="http://www.topografix.com/GPX/1/1">
 <metadata>
     <name>KLAP Session ${new Date().toLocaleString()}</name>
-    <desc>LINE_DATA:${lineMeta}</desc>
+    <desc>LINE_DATA[${lineMeta}]</desc>
 </metadata>
 <trk>
 <name>Track_Log</name>
-<trkseg>`; // 全ラップを一つのtrksegにまとめる
+<trkseg>`;
 
-    // ラップを時系列順（L1, L2, L3...）に並べ替え
-    const sortedLaps = [...lapRecords].sort((a, b) => a.no - b.no);
+    // --- 2. ポイントの書き出し（古い順に並べ替え） ---
+    // lapRecordsは unshift() で「新しい順」に入っているので、reverse() で「古い順」に戻す
+    const sortedLaps = [...lapRecords].reverse();
 
     sortedLaps.forEach((lap) => {
-        if (lap.points.length < 2) return;
+        if (!lap.points || lap.points.length < 2) return;
 
         lap.points.forEach(p => {
             const speedMS = (p.speed / 3.6).toFixed(2);
-            // ISO 8601形式の時刻を確保
+            // trkpt内に time と extensions/speed を含める
             gpx += `\n<trkpt lat="${p.lat}" lon="${p.lon}"><time>${p.time}</time><extensions><speed>${speedMS}</speed></extensions></trkpt>`;
         });
     });
 
     gpx += `\n</trkseg>\n</trk>\n</gpx>`;
 
-    // ダウンロード
+    // --- 3. ダウンロード処理 ---
     const blob = new Blob([gpx], { type: 'application/gpx+xml' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
     a.download = `KLAP_${new Date().getTime()}.gpx`;
+    document.body.appendChild(a);
     a.click();
-    URL.revokeObjectURL(url);
+    document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(url), 100);
 };
 
 // 1. 交点計算と方向判定（外積）を行う関数
