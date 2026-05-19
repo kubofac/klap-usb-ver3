@@ -3,7 +3,7 @@
 <head>
     <meta http-equiv="X-UA-Compatible" content="IE=edge">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>GPS設定ツール Pro V6.7 (USB対応)</title>
+    <title>GPS設定ツール Pro V6.8 (USB対応)</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css" />
     <link rel="manifest" href="/manifest.json">  
     <style>
@@ -251,35 +251,47 @@
             }
         }
 
+       // サーキットプリセット読込ボタンの処理（書き換え）
         document.getElementById('saveCircuitButton').onclick = () => {
             const id = document.getElementById('circuitSelect').value;
-            if (id !== "" && circuitData[id]) {
-                const data = circuitData[id];
-                localStorage.setItem('startLineP1Lat', data.startLineP1[1]);
-                localStorage.setItem('startLineP1Lon', data.startLineP1[0]);
-                localStorage.setItem('startLineP2Lat', data.startLineP2[1]);
-                localStorage.setItem('startLineP2Lon', data.startLineP2[0]);
-                drawSavedLines();
-                displayStatus();
-                map.setView([data.startLineP1[1], data.startLineP1[0]], 17);
-                document.getElementById('selectedCircuitDisplay').textContent = data.name + " 反映完了";
+            if (id !== "") {
+                // 先ほど定義した関数でLocalStorageに一括保存（セクター含む）
+                const data = loadCircuitLinesToStorage(id);
+                
+                if (data) {
+                    // 古い地図上の線をすべて一度消去
+                    ['startLine', 's1Line', 's2Line', 's3Line'].forEach(t => {
+                        if (activeLines[t]) map.removeLayer(activeLines[t]);
+                    });
+
+                    // 保存された座標から再度線を引く
+                    drawSavedLines();
+                    displayStatus();
+                    
+                    // スタートラインの場所に地図を移動
+                    map.setView([data.startLineP1[1], data.startLineP1[0]], 17);
+                    document.getElementById('selectedCircuitDisplay').textContent = data.name + " 反映完了";
+                }
             }
         };
-document.getElementById('clearAllLines').onclick = () => {
-    if(confirm("現在保存されている全てのライン（ST, S1, S2, S3）を削除しますか？パルス数やUSB設定は保持されます。")) {
-        ['startLine', 's1Line', 's2Line', 's3Line'].forEach(t => {
-            localStorage.removeItem(t + 'P1Lat');
-            localStorage.removeItem(t + 'P1Lon');
-            localStorage.removeItem(t + 'P2Lat');
-            localStorage.removeItem(t + 'P2Lon');
-            if (window.fixedLineLayers && window.fixedLineLayers[t]) {
-                map.removeLayer(window.fixedLineLayers[t]);
+// 全ライン座標をクリアボタンの処理（バグ修正版に書き換え）
+        document.getElementById('clearAllLines').onclick = () => {
+            if(confirm("現在保存されている全てのライン（ST, S1, S2, S3）を削除しますか？パルス数やUSB設定は保持されます。")) {
+                ['startLine', 's1Line', 's2Line', 's3Line'].forEach(t => {
+                    localStorage.removeItem(t + 'P1Lat');
+                    localStorage.removeItem(t + 'P1Lon');
+                    localStorage.removeItem(t + 'P2Lat');
+                    localStorage.removeItem(t + 'P2Lon');
+                    // バグ修正: fixedLineLayers ではなく activeLines から削除する
+                    if (activeLines[t]) {
+                        map.removeLayer(activeLines[t]);
+                        activeLines[t] = null;
+                    }
+                });
+                displayStatus();
+                alert("全てのラインをクリアしました。");
             }
-        });
-        displayStatus();
-        alert("全てのラインをクリアしました。");
-    }
-};
+        };
         window.onload = () => {
             initMap();
             loadCircuitList();
