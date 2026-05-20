@@ -3,7 +3,7 @@
 <head>
     <meta http-equiv="X-UA-Compatible" content="IE=edge">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>GPS設定ツール Pro V6.8 (USB対応)</title>
+    <title>GPS設定ツール Pro V7.0 (mycircuit対応)</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css" />
     <link rel="manifest" href="/manifest.json">  
     <style>
@@ -35,7 +35,7 @@
     </style>
 </head>
 <body>
-    <h2 style="text-align:center;">GPS設定ツール V6.7</h2>
+    <h2 style="text-align:center;">GPS設定ツール V6.9</h2>
     <p id="instructionMessage">現在地を取得中...</p>
 
     <div id="map-container">
@@ -73,8 +73,22 @@
 
     <div class="control-group">
         <label>サーキットプリセット読込:</label>
-        <select id="circuitSelect"><option value="">-- 選択してください --</option></select>
+        <select id="circuitSelect" onchange="toggleDeleteButton()"><option value="">-- 選択してください --</option></select>
+        
+        <!-- サーキット追加用UI -->
+        <div style="margin-top: 5px; margin-bottom: 15px; padding: 12px; background: #eef7ff; border: 1px solid #bce0ff; border-radius: 8px;">
+            <label style="font-weight: bold; font-size: 14px; color: #1565C0; display: block; margin-bottom: 5px;">現在のラインを新サーキットとして追加</label>
+            <div style="display: flex; gap: 8px;">
+                <input type="text" id="newCircuitName" placeholder="サーキット名を入力（例：白糸オリジナルライン）" style="flex: 1; padding: 8px; font-size: 14px; border: 1px solid #ccc; border-radius: 4px;">
+                <button onclick="saveNewCustomCircuit()" style="width: auto; margin-bottom: 0; padding: 8px 15px; background: #2196F3; color: white; border: none; border-radius: 4px; font-weight: bold; font-size: 14px; cursor: pointer;">追加保存</button>
+            </div>
+        </div>
+
         <button id="saveCircuitButton">サーキット情報を反映</button>
+        
+        <!-- カスタムサーキット削除ボタン（初期状態は非表示、⭐選択時のみJavaScriptで表示されます） -->
+        <button id="deleteCircuitButton" onclick="deleteSelectedCustomCircuit()" style="background-color: #d9534f; display: none; margin-top: 5px;">選択中のカスタムサーキットを削除</button>
+        
         <div id="selectedCircuitDisplay" class="result-text">未選択</div>
     </div>
 
@@ -241,40 +255,187 @@
         document.getElementById('btnP2').onclick = () => placeMarker('p2');
         document.getElementById('resetStorageButton').onclick = () => { if(confirm("全消去しますか？")) { localStorage.clear(); location.reload(); } };
 
-        function loadCircuitList() {
+        // プルダウンメニューを生成・更新する関数
+        function updateCircuitSelectMenu() {
+            const select = document.getElementById('circuitSelect');
+            if (!select) return;
+
+            select.innerHTML = '<option value="">-- 選択してください --</option>';
+            
             if (typeof circuitData !== 'undefined') {
-                const sel = document.getElementById('circuitSelect');
                 Object.keys(circuitData).forEach(key => {
                     let o = document.createElement('option');
-                    o.value = key; o.textContent = circuitData[key].name; sel.appendChild(o);
+                    o.value = key; 
+                    o.textContent = circuitData[key].name; 
+                    select.appendChild(o);
                 });
+            } else {
+                let presets = [ {id:"0", name:"白糸S"}, {id:"1", name:"富士C"}, {id:"2", name:"つま恋"}, {id:"3", name:"中井C"} ];
+                presets.forEach(p => {
+                    let o = document.createElement('option');
+                    o.value = p.id; o.textContent = p.name; select.appendChild(o);
+                });
+            }
+
+            const customList = JSON.parse(localStorage.getItem('customCircuitList')) || [];
+            
+            customList.forEach(circuit => {
+                const opt = document.createElement('option');
+                opt.value = circuit.id;                 
+                opt.textContent = `⭐ ${circuit.name}`; 
+                select.appendChild(opt);
+            });
+
+            // ボタン表示状態の初期化
+            toggleDeleteButton();
+        }
+
+        // 選択しているコースが自作（⭐）の場合だけ削除ボタンを表示する制御関数
+        function toggleDeleteButton() {
+            const id = document.getElementById('circuitSelect').value;
+            const delBtn = document.getElementById('deleteCircuitButton');
+            if (id && id.startsWith('custom_')) {
+                delBtn.style.display = 'block'; // 自作コースなら削除ボタンを出す
+            } else {
+                delBtn.style.display = 'none';  // 純正プリセットや未選択なら隠す
             }
         }
 
-       // サーキットプリセット読込ボタンの処理（書き換え）
+        // 選択されたカスタムサーキットをスマホから削除する関数
+        function deleteSelectedCustomCircuit() {
+            const selectEl = document.getElementById('circuitSelect');
+            const id = selectEl.value;
+            if (!id || !id.startsWith('custom_')) return;
+
+            const selectedName = selectEl.options[selectEl.selectedIndex].text;
+
+            if (confirm(`カスタムサーキット「${selectedName}」をリストから完全に削除しますか？\n（保存されていたGPS座標データも全て消去されます）`)) {
+                // 1. このサーキットに紐づいていた各ラインの座標データをLocalStorageから消去
+                const targets = ['startLine', 's1Line', 's2Line', 's3Line'];
+                targets.forEach(t => {
+                    localStorage.removeItem(`c${id}_${t}P1Lat`);
+                    localStorage.removeItem(`c${id}_${t}P1Lon`);
+                    localStorage.removeItem(`c${id}_${t}P2Lat`);
+                    localStorage.removeItem(`c${id}_${t}P2Lon`);
+                });
+
+                // 2. カスタムサーキットの名前管理リストから、該当IDを排除
+                let customList = JSON.parse(localStorage.getItem('customCircuitList')) || [];
+                customList = customList.filter(circuit => circuit.id !== id);
+                localStorage.setItem('customCircuitList', JSON.stringify(customList));
+
+                alert('削除が完了しました。');
+
+                // 3. プルダウンメニューをリフレッシュして未選択状態に戻す
+                updateCircuitSelectMenu();
+                document.getElementById('selectedCircuitDisplay').textContent = "未選択";
+            }
+        }
+
+        // サーキットプリセット読込（反映）ボタンの処理
         document.getElementById('saveCircuitButton').onclick = () => {
             const id = document.getElementById('circuitSelect').value;
-            if (id !== "") {
-                // 先ほど定義した関数でLocalStorageに一括保存（セクター含む）
-                const data = loadCircuitLinesToStorage(id);
-                
-                if (data) {
-                    // 古い地図上の線をすべて一度消去
-                    ['startLine', 's1Line', 's2Line', 's3Line'].forEach(t => {
-                        if (activeLines[t]) map.removeLayer(activeLines[t]);
-                    });
+            if (id === "") return;
 
-                    // 保存された座標から再度線を引く
+            ['startLine', 's1Line', 's2Line', 's3Line'].forEach(t => {
+                if (activeLines[t]) map.removeLayer(activeLines[t]);
+            });
+
+            if (id.startsWith('custom_')) {
+                const targets = ['startLine', 's1Line', 's2Line', 's3Line'];
+                let hasValidLine = false;
+                let moveTargetLat = null, moveTargetLon = null;
+
+                targets.forEach(t => {
+                    const lat1 = localStorage.getItem(`c${id}_${t}P1Lat`);
+                    const lon1 = localStorage.getItem(`c${id}_${t}P1Lon`);
+                    const lat2 = localStorage.getItem(`c${id}_${t}P2Lat`);
+                    const lon2 = localStorage.getItem(`c${id}_${t}P2Lon`);
+
+                    if (lat1 && lon1 && lat2 && lon2) {
+                        localStorage.setItem(t + 'P1Lat', lat1);
+                        localStorage.setItem(t + 'P1Lon', lon1);
+                        localStorage.setItem(t + 'P2Lat', lat2);
+                        localStorage.setItem(t + 'P2Lon', lon2);
+                        hasValidLine = true;
+                        if (t === 'startLine') { moveTargetLat = lat1; moveTargetLon = lon1; }
+                    } else {
+                        localStorage.removeItem(t + 'P1Lat');
+                        localStorage.removeItem(t + 'P1Lon');
+                        localStorage.removeItem(t + 'P2Lat');
+                        localStorage.removeItem(t + 'P2Lon');
+                    }
+                });
+
+                if (hasValidLine) {
                     drawSavedLines();
                     displayStatus();
-                    
-                    // スタートラインの場所に地図を移動
-                    map.setView([data.startLineP1[1], data.startLineP1[0]], 17);
-                    document.getElementById('selectedCircuitDisplay').textContent = data.name + " 反映完了";
+                    const selectEl = document.getElementById('circuitSelect');
+                    const selectedName = selectEl.options[selectEl.selectedIndex].text;
+                    document.getElementById('selectedCircuitDisplay').textContent = selectedName + " 反映完了";
+                    if (moveTargetLat && moveTargetLon) {
+                        map.setView([moveTargetLat, moveTargetLon], 17);
+                    }
+                }
+            } else {
+                if (typeof loadCircuitLinesToStorage !== 'undefined') {
+                    const data = loadCircuitLinesToStorage(id);
+                    if (data) {
+                        drawSavedLines();
+                        displayStatus();
+                        map.setView([data.startLineP1[1], data.startLineP1[0]], 17);
+                        document.getElementById('selectedCircuitDisplay').textContent = data.name + " 反映完了";
+                    }
                 }
             }
         };
-// 全ライン座標をクリアボタンの処理（バグ修正版に書き換え）
+
+        // 画面上で現在引かれているラインを新しい名前で保存する関数
+        function saveNewCustomCircuit() {
+            const nameInput = document.getElementById('newCircuitName').value.trim();
+            if (!nameInput) {
+                alert('サーキット名を入力してください。');
+                return;
+            }
+
+            const newId = 'custom_' + Date.now();
+            const targets = ['startLine', 's1Line', 's2Line', 's3Line'];
+            let hasData = false;
+
+            targets.forEach(t => {
+                const p1Lat = localStorage.getItem(t + 'P1Lat');
+                const p1Lon = localStorage.getItem(t + 'P1Lon');
+                const p2Lat = localStorage.getItem(t + 'P2Lat');
+                const p2Lon = localStorage.getItem(t + 'P2Lon');
+
+                if (p1Lat && p1Lon && p2Lat && p2Lon) {
+                    localStorage.setItem(`c${newId}_${t}P1Lat`, p1Lat);
+                    localStorage.setItem(`c${newId}_${t}P1Lon`, p1Lon);
+                    localStorage.setItem(`c${newId}_${t}P2Lat`, p2Lat);
+                    localStorage.setItem(`c${newId}_${t}P2Lon`, p2Lon);
+                    hasData = true;
+                }
+            });
+
+            if (!hasData) {
+                alert('地図上にラインが一つも引かれていません。ラインを設置してから保存してください。');
+                return;
+            }
+
+            let customList = JSON.parse(localStorage.getItem('customCircuitList')) || [];
+            customList.push({ id: newId, name: nameInput });
+            localStorage.setItem('customCircuitList', JSON.stringify(customList));
+
+            alert(`「${nameInput}」を新しくリストに追加しました！`);
+            
+            document.getElementById('newCircuitName').value = '';
+            updateCircuitSelectMenu();
+            
+            document.getElementById('circuitSelect').value = newId;
+            toggleDeleteButton(); // 追加直後に削除ボタンの状態を更新
+        }
+
+        // 全ライン座標をクリアボタンの処理
         document.getElementById('clearAllLines').onclick = () => {
             if(confirm("現在保存されている全てのライン（ST, S1, S2, S3）を削除しますか？パルス数やUSB設定は保持されます。")) {
                 ['startLine', 's1Line', 's2Line', 's3Line'].forEach(t => {
@@ -282,7 +443,6 @@
                     localStorage.removeItem(t + 'P1Lon');
                     localStorage.removeItem(t + 'P2Lat');
                     localStorage.removeItem(t + 'P2Lon');
-                    // バグ修正: fixedLineLayers ではなく activeLines から削除する
                     if (activeLines[t]) {
                         map.removeLayer(activeLines[t]);
                         activeLines[t] = null;
@@ -292,9 +452,11 @@
                 alert("全てのラインをクリアしました。");
             }
         };
+
+        // ページ読み込み時の初期化処理
         window.onload = () => {
             initMap();
-            loadCircuitList();
+            updateCircuitSelectMenu(); 
             drawSavedLines();
             displayStatus();
             document.getElementById('setPulse').textContent = (localStorage.getItem('pl1') || "1") + " パルス/回転";
@@ -303,23 +465,14 @@
             const uif = localStorage.getItem('usb_interface');
             if (uif) document.getElementById('usbStatus').textContent = "保存済み (IF:" + uif + ")";
         };
- 
-    
-    if ('serviceWorker' in navigator) {
-    window.addEventListener('load', () => {
-      // service-worker.js のパスが正しいか確認してください
-      navigator.serviceWorker.register('./service-worker.js')
-        .then(reg => console.log('SW Registered!', reg))
-        .catch(err => console.log('SW Register Failed!', err));
-    });
-  }
-    
-    
-    
-    
-    
-    
-    
+         
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('./service-worker.js')
+                    .then(reg => console.log('SW Registered!', reg))
+                    .catch(err => console.log('SW Register Failed!', err));
+            });
+        }
     </script>
 </body>
 </html>
