@@ -143,7 +143,15 @@ let s1_abs = 0, s2_abs = 0, s3_abs = 0, s4_abs = 0; // s4_absを追加
 let lastGpsDataTime = 0;     // 最後に正しいNMEAデータ（RMC/GGA）を受信した時刻
 let lastGpsValidTime = 0;    // 最後に有効な位置情報（測位成功）を受信した時刻
 let gpsWatchdogTimer = null; // 通信途絶を監視するタイマー
-
+function parseNmeaTime(timeStr) {
+    if (!timeStr || timeStr.length < 6) return Date.now();
+    const h = parseInt(timeStr.substring(0, 2));
+    const m = parseInt(timeStr.substring(2, 4));
+    const s = parseFloat(timeStr.substring(4));
+    const now = new Date();
+    now.setUTCHours(h, m, 0, 0); 
+    return now.getTime() + (s * 1000); // UTCから当日基準のミリ秒に変換
+}
 // --- [追加] ボタンの色をリアルタイム更新する関数 ---
 function updateGpsButtonColor() {
     const btn = document.getElementById('usbGpsBtn');
@@ -169,9 +177,9 @@ function processLap(hitTime, isManual = false) {
         const lapTimeMs = hitTime - baseTime;
         const lapTimeSec = lapTimeMs / 1000;
 
-        if (!isManual) {
+     if (!isManual) {
             isFrozen = true;
-            freezeUntil = Date.now() + 15000;
+            freezeUntil = hitTime + 15000; // ★Date.now() から hitTime（GPS基準）に変更
             freezeDisplayTime = timeFormat(lapTimeMs);
         }
 
@@ -235,7 +243,10 @@ function mainLoop() {
     const now = Date.now();
     if (swState === 1) {
         document.getElementById('display').textContent = "TOTAL " + timeFormat(now - startTime);
-        document.getElementById('display1').textContent = (isFrozen && now < freezeUntil) ? freezeDisplayTime : timeFormat(now - (lapStartTime || startTime));
+        
+        // ★ここを書き換え：スマホ内蔵時計とGPS時間のズレを補正する計算を追加
+        const virtualGpsNow = (lastPos ? lastPos.time : 0) + (now - lastGpsValidTime);
+        document.getElementById('display1').textContent = (isFrozen && virtualGpsNow < freezeUntil) ? freezeDisplayTime : timeFormat(now - (lapStartTime || startTime));
     }
     document.getElementById('speed_val').textContent = Math.round(currentSpeedKmh);
     document.getElementById('max_speed_val').textContent = maxSpeedInLap;
@@ -257,14 +268,15 @@ function parseNMEA(line) {
         if (currentSpeedKmh > maxSpeedInLap) maxSpeedInLap = Math.round(currentSpeedKmh);
     }
     
-    if (line.includes('GGA') && (p[6] !== '0' && p[6] !== '')) {
-        // --- [追加] 衛星を捉え、有効な位置情報が来たらその時刻を記録（赤の判定用） ---
+   if (line.includes('GGA') && (p[6] !== '0' && p[6] !== '')) {
         lastGpsValidTime = Date.now();
+        const gpsTime = parseNmeaTime(p[1]); // ★ここをGPS時間基準にする
 
-        const cur = { lat: dmmToDec(p[2], p[3]), lon: dmmToDec(p[4], p[5]), time: Date.now() };
+        const cur = { lat: dmmToDec(p[2], p[3]), lon: dmmToDec(p[4], p[5]), time: gpsTime };
     
-        if (swState === 1) {
-            currentLapPoints.push({ lat: cur.lat, lon: cur.lon, time: new Date().toISOString(), speed: currentSpeedKmh });
+   if (swState === 1) {
+    // ★ new Date().toISOString() から new Date(cur.time).toISOString() に変更
+    currentLapPoints.push({ lat: cur.lat, lon: cur.lon, time: new Date(cur.time).toISOString(), speed: currentSpeedKmh });
             
             if (lastPos) {
                 // --- 1. スタート/コントロールライン判定 ---
@@ -431,22 +443,70 @@ document.getElementById('lapBtn').onclick = function() {
     if (swState === 1) processLap(Date.now(), true);
     else if (confirm("RESET ALL?")) location.reload();
 };
+// --- [ここから上書き] USBハング防止・トグル切断・自動リトライ機能付きの処理 ---
+let isUsbLoopRunning = false; 
+
+async function startUsbReadLoop() {
+    if (isUsbLoopRunning || !device) return;
+    isUsbLoopRunning = true;
+    const endpoint = parseInt(localStorage.getItem('usb_endpoint')) || 2;
+
+    try {
+        while (device && device.opened) {
+            const res = await device.transferIn(endpoint, 512);
+            if (res.data && res.data.byteLength > 0) {
+                const linesN = (nmeaBuffer + new TextDecoder().decode(res.data)).split(/\r?\n/);
+                nmeaBuffer = linesN.pop(); 
+                linesN.forEach(parseNMEA);
+            }
+        }
+    } catch (e) {
+        console.error("USBループエラー:", e);
+    } finally {
+        isUsbLoopRunning = false;
+        if (device && device.opened) {
+            setTimeout(startUsbReadLoop, 100); 
+        }
+    }
+}
+
+navigator.usb.addEventListener('disconnect', (event) => {
+    if (device && event.device === device) {
+        device = null;
+        isUsbLoopRunning = false;
+        lastGpsDataTime = 0;
+        updateGpsButtonColor();
+    }
+});
+
 document.getElementById('usbGpsBtn').onclick = async function() {
     try {
-        device = await navigator.usb.requestDevice({ filters: [] });
-        await device.open(); await device.selectConfiguration(1); await device.claimInterface(1);
-        
-        // --- [追加] データが途絶えた（ロストした）ことをリアルタイムに検知する常時監視タイマー ---
-        if(gpsWatchdogTimer) clearInterval(gpsWatchdogTimer);
-        gpsWatchdogTimer = setInterval(updateGpsButtonColor, 500);
-
-        while (device) {
-            const res = await device.transferIn(2, 512);
-            const linesN = (nmeaBuffer + new TextDecoder().decode(res.data)).split(/\r?\n/);
-            nmeaBuffer = linesN.pop(); linesN.forEach(parseNMEA);
+        if (device && device.opened) {
+            isUsbLoopRunning = false;
+            await device.close();
+            device = null;
+            lastGpsDataTime = 0;
+            updateGpsButtonColor();
+            return; 
         }
-    } catch (e) {}
+
+        device = await navigator.usb.requestDevice({ filters: [] });
+        await device.open(); 
+        await device.selectConfiguration(1); 
+        await device.claimInterface(parseInt(localStorage.getItem('usb_interface')) || 1);
+        
+        if(!gpsWatchdogTimer) {
+            gpsWatchdogTimer = setInterval(updateGpsButtonColor, 500);
+        }
+
+        startUsbReadLoop();
+    } catch (e) {
+        console.error("USB接続エラー:", e);
+        device = null;
+        isUsbLoopRunning = false;
+    }
 };
+// --- [ここまで上書き] ---
 document.getElementById('historyBtn').onclick = function() {
     if (lapRecords.length === 0) return;
     const bT = Math.min(...lapRecords.map(r => r.time));
