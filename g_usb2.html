@@ -3,8 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>KLAP_DEGI_LAPTIMER - V12.7</title>
+    <title>KLAP_DEGI_LAPTIMER - V12.8</title>
     <style>
+        /* ボタンGPS色変更*/
         :root { --hrc-red: #E4002B; --hrc-white: #ffffff; --bg-dark: #000000; --hrc-orange: #FFA500; }
         body, html { margin: 0; padding: 0; width: 100%; height: 100%; background-color: var(--bg-dark); color: var(--hrc-white); font-family: 'Arial Black', sans-serif; overflow: hidden; }
         #dashboard { position: relative; width: 100vw; height: 100dvh; }
@@ -138,7 +139,29 @@ let sectorDirections = { s1: null, s2: null, s3: null };
 let cooldownMs = 15000; // 15秒（ピットアウト直後の誤作動防止）  
 let lapCount = 1;
 let s1_abs = 0, s2_abs = 0, s3_abs = 0, s4_abs = 0; // s4_absを追加
-    
+  // --- [追加] ボタン色管理用の変数 ---
+let lastGpsDataTime = 0;     // 最後に正しいNMEAデータ（RMC/GGA）を受信した時刻
+let lastGpsValidTime = 0;    // 最後に有効な位置情報（測位成功）を受信した時刻
+let gpsWatchdogTimer = null; // 通信途絶を監視するタイマー
+
+// --- [追加] ボタンの色をリアルタイム更新する関数 ---
+function updateGpsButtonColor() {
+    const btn = document.getElementById('usbGpsBtn');
+    const now = Date.now();
+
+    // 1. 通信途絶の判定：最後のNMEAデータ受信から2秒以上経過したらグレーに戻す
+    if (now - lastGpsDataTime > 2000) {
+        btn.style.background = "#111"; 
+        return;
+    }
+
+    // 2. 位置情報の判定：最後の測位成功から2秒以内なら「赤」、それ以外（位置ロス）は「オレンジ」
+    if (now - lastGpsValidTime <= 2000) {
+        btn.style.background = "var(--hrc-red)";    // 赤（位置情報あり）
+    } else {
+        btn.style.background = "var(--hrc-orange)"; // オレンジ（データ受信中・位置なし）
+    }
+}  
 function processLap(hitTime, isManual = false) {
     const baseTime = lapStartTime > 0 ? lapStartTime : startTime;
     
@@ -221,7 +244,12 @@ function mainLoop() {
 
 // 2. 通過判定ロジック（各セクターの方向を個別に学習・記憶）
 function parseNMEA(line) {
+    // 1. まず届いた文字列が「RMC」または「GGA」を含んでいるか（NMEAデータか）を判定
     if (!line.includes('RMC') && !line.includes('GGA')) return;
+    
+    // --- [追加] 正しいNMEAデータが届いた直後に受信時刻を記録（オレンジの判定用） ---
+    lastGpsDataTime = Date.now();
+    
     const p = line.split(',');
     
     if (line.includes('RMC') && p[2] === 'A') {
@@ -230,6 +258,9 @@ function parseNMEA(line) {
     }
     
     if (line.includes('GGA') && (p[6] !== '0' && p[6] !== '')) {
+        // --- [追加] 衛星を捉え、有効な位置情報が来たらその時刻を記録（赤の判定用） ---
+        lastGpsValidTime = Date.now();
+
         const cur = { lat: dmmToDec(p[2], p[3]), lon: dmmToDec(p[4], p[5]), time: Date.now() };
     
         if (swState === 1) {
@@ -280,9 +311,12 @@ function parseNMEA(line) {
                 }
             }
         }
+        // 位置情報の更新（元のロジック通りの位置に配置）
         lastPos = cur;
-        document.getElementById('usbGpsBtn').style.background = "var(--hrc-red)";
     }
+    
+    // --- [修正] 元の「一律で赤にする処理」を削除し、3色判定関数へ置き換え ---
+    updateGpsButtonColor();
 }
 
 document.getElementById('gpxBtn').onclick = function() {
@@ -401,6 +435,11 @@ document.getElementById('usbGpsBtn').onclick = async function() {
     try {
         device = await navigator.usb.requestDevice({ filters: [] });
         await device.open(); await device.selectConfiguration(1); await device.claimInterface(1);
+        
+        // --- [追加] データが途絶えた（ロストした）ことをリアルタイムに検知する常時監視タイマー ---
+        if(gpsWatchdogTimer) clearInterval(gpsWatchdogTimer);
+        gpsWatchdogTimer = setInterval(updateGpsButtonColor, 500);
+
         while (device) {
             const res = await device.transferIn(2, 512);
             const linesN = (nmeaBuffer + new TextDecoder().decode(res.data)).split(/\r?\n/);
