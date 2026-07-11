@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>KLAP_DEGI_LAPTIMER - V12.8</title>
     <style>
-        /* gps時間全書き換え*/
+        /* ボタンGPS色変更*/
         :root { --hrc-red: #E4002B; --hrc-white: #ffffff; --bg-dark: #000000; --hrc-orange: #FFA500; }
         body, html { margin: 0; padding: 0; width: 100%; height: 100%; background-color: var(--bg-dark); color: var(--hrc-white); font-family: 'Arial Black', sans-serif; overflow: hidden; }
         #dashboard { position: relative; width: 100vw; height: 100dvh; }
@@ -138,29 +138,21 @@ let validDirection = null;
 let sectorDirections = { s1: null, s2: null, s3: null };
 let cooldownMs = 15000; // 15秒（ピットアウト直後の誤作動防止）  
 let lapCount = 1;
-let s1_abs = 0, s2_abs = 0, s3_abs = 0, s4_abs = 0; 
-
+let s1_abs = 0, s2_abs = 0, s3_abs = 0, s4_abs = 0; // s4_absを追加
+  // --- [追加] ボタン色管理用の変数 ---
 let lastGpsDataTime = 0;     // 最後に正しいNMEAデータ（RMC/GGA）を受信した時刻
 let lastGpsValidTime = 0;    // 最後に有効な位置情報（測位成功）を受信した時刻
 let gpsWatchdogTimer = null; // 通信途絶を監視するタイマー
-
 function parseNmeaTime(timeStr) {
     if (!timeStr || timeStr.length < 6) return Date.now();
-    const h = parseInt(timeStr.substring(0, 2), 10);
-    const m = parseInt(timeStr.substring(2, 4), 10);
-    const s = parseInt(timeStr.substring(4, 6), 10);
-    
-    let ms = 0;
-    const dotIdx = timeStr.indexOf('.');
-    if (dotIdx !== -1) {
-        const msStr = timeStr.substring(dotIdx + 1).padEnd(3, '0').substring(0, 3);
-        ms = parseInt(msStr, 10);
-    }
+    const h = parseInt(timeStr.substring(0, 2));
+    const m = parseInt(timeStr.substring(2, 4));
+    const s = parseFloat(timeStr.substring(4));
     const now = new Date();
-    now.setUTCHours(h, m, s, ms);
-    return now.getTime();
+    now.setUTCHours(h, m, 0, 0); 
+    return now.getTime() + (s * 1000); // UTCから当日基準のミリ秒に変換
 }
-
+// --- [追加] ボタンの色をリアルタイム更新する関数 ---
 function updateGpsButtonColor() {
     const btn = document.getElementById('usbGpsBtn');
     const now = Date.now();
@@ -178,7 +170,6 @@ function updateGpsButtonColor() {
         btn.style.background = "var(--hrc-orange)"; // オレンジ（データ受信中・位置なし）
     }
 }  
-
 function processLap(hitTime, isManual = false) {
     const baseTime = lapStartTime > 0 ? lapStartTime : startTime;
     
@@ -186,9 +177,9 @@ function processLap(hitTime, isManual = false) {
         const lapTimeMs = hitTime - baseTime;
         const lapTimeSec = lapTimeMs / 1000;
 
-        if (!isManual) {
+     if (!isManual) {
             isFrozen = true;
-            freezeUntil = hitTime + 15000; 
+            freezeUntil = hitTime + 15000; // ★Date.now() から hitTime（GPS基準）に変更
             freezeDisplayTime = timeFormat(lapTimeMs);
         }
 
@@ -197,14 +188,21 @@ function processLap(hitTime, isManual = false) {
         const s2_text = (s2_abs > 0 && s1_abs > 0) ? (s2_abs - s1_abs).toFixed(3) : "--.---";
         const s3_text = (s3_abs > 0 && s2_abs > 0) ? (s3_abs - s2_abs).toFixed(3) : "--.---";
         
-        // --- S4の計算ロジック ---
-        let s4_text = "--.---";
+        // --- S4の計算ロジック（柔軟な判定） ---
+        // S3があればS3から、なければS2から、それもなければS1から、最後はスタートからの時間をS4とする
+       let s4_text = "--.---";
         if (s3_abs > 0) {
+            // S3を通過している場合
             s4_text = (lapTimeSec - s3_abs).toFixed(3);
         } else if (s2_abs > 0) {
+            // S2まで通過している場合
             s4_text = (lapTimeSec - s2_abs).toFixed(3);
         } else if (s1_abs > 0) {
+            // S1まで通過している場合
             s4_text = (lapTimeSec - s1_abs).toFixed(3);
+        } else {
+            // セクターを一つも通らなかった場合（S1〜S3がすべて0）
+            s4_text = "--.---"; 
         }
 
         const lapData = {
@@ -233,6 +231,7 @@ function processLap(hitTime, isManual = false) {
     });
 }
 
+
 function updateLapList() {
     if (lapRecords.length === 0) return;
     const bestTime = Math.min(...lapRecords.map(r => r.time));
@@ -244,6 +243,8 @@ function mainLoop() {
     const now = Date.now();
     if (swState === 1) {
         document.getElementById('display').textContent = "TOTAL " + timeFormat(now - startTime);
+        
+        // ★ここを書き換え：スマホ内蔵時計とGPS時間のズレを補正する計算を追加
         const virtualGpsNow = (lastPos ? lastPos.time : 0) + (now - lastGpsValidTime);
         document.getElementById('display1').textContent = (isFrozen && virtualGpsNow < freezeUntil) ? freezeDisplayTime : timeFormat(now - (lapStartTime || startTime));
     }
@@ -252,10 +253,14 @@ function mainLoop() {
     requestAnimationFrame(mainLoop);
 }
 
+// 2. 通過判定ロジック（各セクターの方向を個別に学習・記憶）
 function parseNMEA(line) {
+    // 1. まず届いた文字列が「RMC」または「GGA」を含んでいるか（NMEAデータか）を判定
     if (!line.includes('RMC') && !line.includes('GGA')) return;
     
+    // --- [追加] 正しいNMEAデータが届いた直後に受信時刻を記録（オレンジの判定用） ---
     lastGpsDataTime = Date.now();
+    
     const p = line.split(',');
     
     if (line.includes('RMC') && p[2] === 'A') {
@@ -263,47 +268,45 @@ function parseNMEA(line) {
         if (currentSpeedKmh > maxSpeedInLap) maxSpeedInLap = Math.round(currentSpeedKmh);
     }
     
-    if (line.includes('GGA') && (p[6] !== '0' && p[6] !== '')) {
+   if (line.includes('GGA') && (p[6] !== '0' && p[6] !== '')) {
         lastGpsValidTime = Date.now();
-        const gpsTime = parseNmeaTime(p[1]); 
+        const gpsTime = parseNmeaTime(p[1]); // ★ここをGPS時間基準にする
 
         const cur = { lat: dmmToDec(p[2], p[3]), lon: dmmToDec(p[4], p[5]), time: gpsTime };
     
-        if (swState === 1) {
-            currentLapPoints.push({ lat: cur.lat, lon: cur.lon, time: new Date(cur.time).toISOString(), speed: currentSpeedKmh });
+   if (swState === 1) {
+    // ★ new Date().toISOString() から new Date(cur.time).toISOString() に変更
+    currentLapPoints.push({ lat: cur.lat, lon: cur.lon, time: new Date(cur.time).toISOString(), speed: currentSpeedKmh });
             
             if (lastPos) {
                 // --- 1. スタート/コントロールライン判定 ---
                 const hitSL = getIntersection(lastPos, cur, lines.startLine);
                 if (hitSL) {
+                    // 初回通過時に方向を記憶
                     if (validDirection === null) validDirection = hitSL.dir;
-                    if (hitSL.dir === validDirection && (hitSL.time - (lapStartTime || startTime) > cooldownMs)) {
-                        // ★ 解析システム用に、ミリ秒3桁の交点(通過点)をログポイントに割り込ませる
-                        const ratio = (hitSL.time - lastPos.time) / (cur.time - lastPos.time);
-                        const hitLat = lastPos.lat + (cur.lat - lastPos.lat) * ratio;
-                        const hitLon = lastPos.lon + (cur.lon - lastPos.lon) * ratio;
-                        currentLapPoints.push({ lat: hitLat, lon: hitLon, time: new Date(hitSL.time).toISOString(), speed: currentSpeedKmh });
 
+                    // クールダウン（15秒）設定
+                    const cooldownMs = 15000; 
+
+                    // 記憶した方向と一致し、かつ15秒経過している場合のみラップ開始
+                    if (hitSL.dir === validDirection && (hitSL.time - (lapStartTime || startTime) > cooldownMs)) {
                         processLap(hitSL.time, false);
                     }
                 }
 
                 // --- 2. セクターライン判定（V2.1 厳格仕様） ---
+                // スタートラインを通過（lapStartTime > 0）するまで、セクター判定は一切行わない
                 if (lapStartTime > 0) {
                     ['s1', 's2', 's3'].forEach((s) => {
                         const hit = getIntersection(lastPos, cur, lines[s + 'Line']);
                         if (hit) {
+                            // 各セクターラインの通過方向を個別に記憶
                             if (sectorDirections[s] === null) sectorDirections[s] = hit.dir;
 
+                            // 記憶した方向と一致する場合のみ記録
                             if (hit.dir === sectorDirections[s]) {
                                 const absTime = (hit.time - lapStartTime) / 1000;
                                 
-                                // ★【追加】セクターライン上でもミリ秒3桁の精密な交点をログにインサート
-                                const ratio = (hit.time - lastPos.time) / (cur.time - lastPos.time);
-                                const hitLat = lastPos.lat + (cur.lat - lastPos.lat) * ratio;
-                                const hitLon = lastPos.lon + (cur.lon - lastPos.lon) * ratio;
-                                currentLapPoints.push({ lat: hitLat, lon: hitLon, time: new Date(hit.time).toISOString(), speed: currentSpeedKmh });
-
                                 if (s === 's1' && s1_abs === 0) {
                                     s1_abs = absTime;
                                     document.getElementById('s1_val').textContent = s1_abs.toFixed(3);
@@ -320,8 +323,11 @@ function parseNMEA(line) {
                 }
             }
         }
+        // 位置情報の更新（元のロジック通りの位置に配置）
         lastPos = cur;
     }
+    
+    // --- [修正] 元の「一律で赤にする処理」を削除し、3色判定関数へ置き換え ---
     updateGpsButtonColor();
 }
 
@@ -331,6 +337,8 @@ document.getElementById('gpxBtn').onclick = function() {
         return;
     }
 
+    // --- 1. ライン情報の生成（解析ソフト index.html 専用形式） ---
+    // localStorageから最新のライン情報を取得
     const getL = (key) => {
         const p1Lat = localStorage.getItem(key + 'P1Lat');
         if (!p1Lat) return "";
@@ -342,6 +350,7 @@ document.getElementById('gpxBtn').onclick = function() {
     const s2 = getL('s2Line');
     const s3 = getL('s3Line');
     
+    // 解析ソフトが検索する "LINE_DATA[...]" の文字列を作成
     let lineMeta = `SL:${sl}`;
     if (s1) lineMeta += `|S1:${s1}`;
     if (s2) lineMeta += `|S2:${s2}`;
@@ -357,22 +366,23 @@ document.getElementById('gpxBtn').onclick = function() {
 <name>Track_Log</name>
 <trkseg>`;
 
+    // --- 2. ポイントの書き出し（古い順に並べ替え） ---
+    // lapRecordsは unshift() で「新しい順」に入っているので、reverse() で「古い順」に戻す
     const sortedLaps = [...lapRecords].reverse();
 
     sortedLaps.forEach((lap) => {
         if (!lap.points || lap.points.length < 2) return;
 
-        // ★ 割り込ませた交点データを時間軸通りに並べるため、timeで昇順ソートする
-        const sortedPoints = [...lap.points].sort((a, b) => new Date(a.time) - new Date(b.time));
-
-        sortedPoints.forEach(p => {
+        lap.points.forEach(p => {
             const speedMS = (p.speed / 3.6).toFixed(2);
+            // trkpt内に time と extensions/speed を含める
             gpx += `\n<trkpt lat="${p.lat}" lon="${p.lon}"><time>${p.time}</time><extensions><speed>${speedMS}</speed></extensions></trkpt>`;
         });
     });
 
     gpx += `\n</trkseg>\n</trk>\n</gpx>`;
 
+    // --- 3. ダウンロード処理 ---
     const blob = new Blob([gpx], { type: 'application/gpx+xml' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -384,6 +394,7 @@ document.getElementById('gpxBtn').onclick = function() {
     setTimeout(() => URL.revokeObjectURL(url), 100);
 };
 
+// 1. 交点計算と方向判定（外積）を行う関数
 function getIntersection(p1, p2, line) {
     if (!line) return null;
     const x1 = p1.lon, y1 = p1.lat, x2 = p2.lon, y2 = p2.lat;
@@ -395,8 +406,13 @@ function getIntersection(p1, p2, line) {
     const t = ((x4 - x3) * (y1 - y3) - (y4 - y3) * (x1 - x3)) / den;
     const u = ((x2 - x1) * (y1 - y3) - (y2 - y1) * (x1 - x3)) / den;
     
+    // ラインを跨いだ場合（予測時刻を計算）
     if (t >= 0 && t <= 1 && u >= 0 && u <= 1) {
-        const Lx = x4 - x3, Ly = y4 - y3, Vx = x2 - x1, Vy = y2 - y1;
+        // 方向判定（外積を用いて左右どちらから進入したかを算出）
+        const Lx = x4 - x3;
+        const Ly = y4 - y3;
+        const Vx = x2 - x1;
+        const Vy = y2 - y1;
         const dir = (Lx * Vy - Ly * Vx) > 0 ? 1 : -1;
         
         return { 
@@ -407,12 +423,15 @@ function getIntersection(p1, p2, line) {
     return null;
 }
 
-function dmmToDec(d, dir){ if(!d) return 0; const dot=d.indexOf('.'); const deg=parseInt(d.substring(0,dot-2), 10), min=parseFloat(d.substring(dot-2)); return (dir==='S'||dir==='W')?-(deg+min/60):(deg+min/60); }
+
+function dmmToDec(d, dir){ if(!d) return 0; const dot=d.indexOf('.'); const deg=parseInt(d.substring(0,dot-2)), min=parseFloat(d.substring(dot-2)); return (dir==='S'||dir==='W')?-(deg+min/60):(deg+min/60); }
 function timeFormat(ms){ const m=Math.floor(ms/60000), s=Math.floor((ms%60000)/1000), ms2=Math.floor(ms%1000); return `${m.toString().padStart(2,'0')}:${s.toString().padStart(2,'0')}.${ms2.toString().padStart(3,'0')}`; }
 
+// 3. STARTボタン（走行開始時に記憶をリセット）
 document.getElementById('startBtn').onclick = function() {
     if (swState !== 1) { 
         swState = 1; startTime = Date.now(); lapStartTime = 0; lapRecords = []; gpsPoints = [];
+        // 方向記憶を初期化（新しい走行セッションの最初に学習し直す）
         validDirection = null;
         sectorDirections = { s1: null, s2: null, s3: null };
         this.classList.add('active'); document.getElementById('gpxBtn').style.display = 'none';
@@ -420,17 +439,17 @@ document.getElementById('startBtn').onclick = function() {
         swState = 2; this.classList.remove('active'); document.getElementById('gpxBtn').style.display = 'block'; 
     }
 };
-
 document.getElementById('lapBtn').onclick = function() {
     if (swState === 1) processLap(Date.now(), true);
     else if (confirm("RESET ALL?")) location.reload();
 };
-
+// --- [ここから上書き] USBハング防止・トグル切断・自動リトライ機能付きの処理 ---
 let isUsbLoopRunning = false; 
+
 async function startUsbReadLoop() {
     if (isUsbLoopRunning || !device) return;
     isUsbLoopRunning = true;
-    const endpoint = parseInt(localStorage.getItem('usb_endpoint'), 10) || 2;
+    const endpoint = parseInt(localStorage.getItem('usb_endpoint')) || 2;
 
     try {
         while (device && device.opened) {
@@ -474,7 +493,7 @@ document.getElementById('usbGpsBtn').onclick = async function() {
         device = await navigator.usb.requestDevice({ filters: [] });
         await device.open(); 
         await device.selectConfiguration(1); 
-        await device.claimInterface(parseInt(localStorage.getItem('usb_interface'), 10) || 1);
+        await device.claimInterface(parseInt(localStorage.getItem('usb_interface')) || 1);
         
         if(!gpsWatchdogTimer) {
             gpsWatchdogTimer = setInterval(updateGpsButtonColor, 500);
@@ -487,7 +506,7 @@ document.getElementById('usbGpsBtn').onclick = async function() {
         isUsbLoopRunning = false;
     }
 };
-
+// --- [ここまで上書き] ---
 document.getElementById('historyBtn').onclick = function() {
     if (lapRecords.length === 0) return;
     const bT = Math.min(...lapRecords.map(r => r.time));
