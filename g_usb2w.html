@@ -270,11 +270,11 @@ function parseNMEA(line) {
         if (currentSpeedKmh > maxSpeedInLap) maxSpeedInLap = Math.round(currentSpeedKmh);
     }
     
-    if (line.includes('GGA') && (p[6] !== '0' && p[6] !== '')) {
-        lastGpsValidTime = Date.now();
-        const gpsTime = parseNmeaTime(p[1]);
+  if (line.includes('GGA') && (p[6] !== '0' && p[6] !== '')) {
+    lastGpsValidTime = Date.now();
+    const receiveTime = Date.now(); // ← スマホがデータを受け取った瞬間の実時間に統一
 
-        const cur = { lat: dmmToDec(p[2], p[3]), lon: dmmToDec(p[4], p[5]), time: gpsTime };
+    const cur = { lat: dmmToDec(p[2], p[3]), lon: dmmToDec(p[4], p[5]), time: receiveTime };
     
         if (swState === 1) {
             currentLapPoints.push({ lat: cur.lat, lon: cur.lon, time: new Date(cur.time).toISOString(), speed: currentSpeedKmh });
