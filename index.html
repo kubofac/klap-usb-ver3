@@ -1,9 +1,10 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
+    <meta charset="UTF-8">
     <meta http-equiv="X-UA-Compatible" content="IE=edge">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>GPS設定ツール Pro V7.0 (mycircuit対応)</title>
+    <title>GPS設定ツール Pro V7.1 (全国circuit対応)</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css" />
     <link rel="manifest" href="/manifest.json">  
     <style>
@@ -105,6 +106,13 @@
         let p1Temp = null, p2Temp = null;
         let activeLines = { startLine: null, s1Line: null, s2Line: null, s3Line: null };
 
+        window.onload = () => {
+            initMap();
+            updateCircuitSelectMenu();
+            drawSavedLines();
+            displayStatus();
+        };
+
         function initMap() {
             map = L.map('mapid').setView([35.68, 139.76], 15);
             L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
@@ -200,6 +208,19 @@
             }
         };
 
+        document.getElementById('clearAllLines').onclick = () => {
+            if(confirm("全てのライン座標設定を解除しますか？")) {
+                ['startLine', 's1Line', 's2Line', 's3Line'].forEach(t => {
+                    localStorage.removeItem(t + 'P1Lat');
+                    localStorage.removeItem(t + 'P1Lon');
+                    localStorage.removeItem(t + 'P2Lat');
+                    localStorage.removeItem(t + 'P2Lon');
+                    if (activeLines[t]) map.removeLayer(activeLines[t]);
+                });
+                displayStatus();
+            }
+        };
+
         function displayStatus() {
             const getS = (t) => localStorage.getItem(t + 'P1Lat') ? "OK" : "--";
             document.getElementById('statusSummary').innerHTML = 
@@ -224,16 +245,9 @@
                     o.textContent = circuitData[key].name; 
                     select.appendChild(o);
                 });
-            } else {
-                let presets = [ {id:"0", name:"白糸S"}, {id:"1", name:"富士C"}, {id:"2", name:"つま恋"}, {id:"3", name:"中井C"} ];
-                presets.forEach(p => {
-                    let o = document.createElement('option');
-                    o.value = p.id; o.textContent = p.name; select.appendChild(o);
-                });
             }
 
             const customList = JSON.parse(localStorage.getItem('customCircuitList')) || [];
-            
             customList.forEach(circuit => {
                 const opt = document.createElement('option');
                 opt.value = circuit.id;                 
@@ -252,6 +266,47 @@
             } else {
                 delBtn.style.display = 'none';
             }
+        }
+
+        // 新しいカスタムサーキットを保存する関数
+        function saveNewCustomCircuit() {
+            const nameInput = document.getElementById('newCircuitName');
+            const name = nameInput.value.trim();
+            if (!name) { alert("サーキット名を入力してください。"); return; }
+
+            const customId = "custom_" + Date.now();
+            const targets = ['startLine', 's1Line', 's2Line', 's3Line'];
+            let hasAnyLine = false;
+
+            targets.forEach(t => {
+                const lat1 = localStorage.getItem(t + 'P1Lat');
+                const lon1 = localStorage.getItem(t + 'P1Lon');
+                const lat2 = localStorage.getItem(t + 'P2Lat');
+                const lon2 = localStorage.getItem(t + 'P2Lon');
+
+                if (lat1 && lon1 && lat2 && lon2) {
+                    localStorage.setItem(`c${customId}_${t}P1Lat`, lat1);
+                    localStorage.setItem(`c${customId}_${t}P1Lon`, lon1);
+                    localStorage.setItem(`c${customId}_${t}P2Lat`, lat2);
+                    localStorage.setItem(`c${customId}_${t}P2Lon`, lon2);
+                    hasAnyLine = true;
+                }
+            });
+
+            if (!hasAnyLine) {
+                alert("保存するラインが1つも設定されていません。ラインを設定してから追加してください。");
+                return;
+            }
+
+            let customList = JSON.parse(localStorage.getItem('customCircuitList')) || [];
+            customList.push({ id: customId, name: name });
+            localStorage.setItem('customCircuitList', JSON.stringify(customList));
+
+            alert(`カスタムサーキット「${name}」を追加保存しました！`);
+            nameInput.value = '';
+            updateCircuitSelectMenu();
+            document.getElementById('circuitSelect').value = customId;
+            toggleDeleteButton();
         }
 
         function deleteSelectedCustomCircuit() {
@@ -331,92 +386,14 @@
                     if (data) {
                         drawSavedLines();
                         displayStatus();
-                        map.setView([data.startLineP1[1], data.startLineP1[0]], 17);
                         document.getElementById('selectedCircuitDisplay').textContent = data.name + " 反映完了";
+                        if (data.startLineP1) {
+                            map.setView([data.startLineP1[1], data.startLineP1[0]], 17);
+                        }
                     }
                 }
             }
         };
-
-        function saveNewCustomCircuit() {
-            const nameInput = document.getElementById('newCircuitName').value.trim();
-            if (!nameInput) {
-                alert('サーキット名を入力してください。');
-                return;
-            }
-
-            const newId = 'custom_' + Date.now();
-            const targets = ['startLine', 's1Line', 's2Line', 's3Line'];
-            let hasData = false;
-
-            targets.forEach(t => {
-                const p1Lat = localStorage.getItem(t + 'P1Lat');
-                const p1Lon = localStorage.getItem(t + 'P1Lon');
-                const p2Lat = localStorage.getItem(t + 'P2Lat');
-                const p2Lon = localStorage.getItem(t + 'P2Lon');
-
-                if (p1Lat && p1Lon && p2Lat && p2Lon) {
-                    localStorage.setItem(`c${newId}_${t}P1Lat`, p1Lat);
-                    localStorage.setItem(`c${newId}_${t}P1Lon`, p1Lon);
-                    localStorage.setItem(`c${newId}_${t}P2Lat`, p2Lat);
-                    localStorage.setItem(`c${newId}_${t}P2Lon`, p2Lon);
-                    hasData = true;
-                }
-            });
-
-            if (!hasData) {
-                alert('地図上にラインが一つも引かれていません。ラインを設置してから保存してください。');
-                return;
-            }
-
-            let customList = JSON.parse(localStorage.getItem('customCircuitList')) || [];
-            customList.push({ id: newId, name: nameInput });
-            localStorage.setItem('customCircuitList', JSON.stringify(customList));
-
-            alert(`「${nameInput}」を新しくリストに追加しました！`);
-            
-            document.getElementById('newCircuitName').value = '';
-            updateCircuitSelectMenu();
-            
-            document.getElementById('circuitSelect').value = newId;
-            toggleDeleteButton();
-        }
-
-        document.getElementById('clearAllLines').onclick = () => {
-            if(confirm("現在保存されている全てのライン（ST, S1, S2, S3）を削除しますか？USB設定は保持されます。")) {
-                ['startLine', 's1Line', 's2Line', 's3Line'].forEach(t => {
-                    localStorage.removeItem(t + 'P1Lat');
-                    localStorage.removeItem(t + 'P1Lon');
-                    localStorage.removeItem(t + 'P2Lat');
-                    localStorage.removeItem(t + 'P2Lon');
-                    if (activeLines[t]) {
-                        map.removeLayer(activeLines[t]);
-                        activeLines[t] = null;
-                    }
-                });
-                displayStatus();
-                alert("全てのラインをクリアしました。");
-            }
-        };
-
-        // ページ読み込み時の初期化処理
-        window.onload = () => {
-            initMap();
-            updateCircuitSelectMenu(); 
-            drawSavedLines();
-            displayStatus();
-
-            const uif = localStorage.getItem('usb_interface');
-            if (uif) document.getElementById('usbStatus').textContent = "保存済み (IF:" + uif + ")";
-        };
-          
-        if ('serviceWorker' in navigator) {
-            window.addEventListener('load', () => {
-                navigator.serviceWorker.register('./service-worker.js')
-                    .then(reg => console.log('SW Registered!', reg))
-                    .catch(err => console.log('SW Register Failed!', err));
-            });
-        }
     </script>
 </body>
 </html>
