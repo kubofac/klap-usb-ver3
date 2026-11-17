@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>KLAP USB 端末互換性チェッカー</title>
+    <style>
+        body { font-family: sans-serif; padding: 20px; text-align: center; background: #f4f4f9; }
+        .box { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); max-width: 400px; margin: auto; }
+        button { background: #007bff; color: white; border: none; padding: 15px 20px; font-size: 16px; border-radius: 5px; cursor: pointer; width: 100%; margin-top: 15px; }
+        #result { margin-top: 20px; font-weight: bold; font-size: 16px; padding: 10px; border-radius: 5px; }
+        .ok { background: #d4edda; color: #155724; }
+        .ng { background: #f8d7da; color: #721c24; }
+    </style>
+</head>
+<body>
+
+    <div class="box">
+        <h2>WebUSB 互換性テスト</h2>
+        <p style="font-size: 13px; color: #555;">GPSモジュールを接続し、下のボタンを押して端末の互換性をテストしてください。</p>
+        <button id="testBtn">端末テストを実行</button>
+        <div id="result"></div>
+    </div>
+
+    <script>
+        document.getElementById('testBtn').onclick = async () => {
+            const resDiv = document.getElementById('result');
+            resDiv.className = "";
+            resDiv.textContent = "デバイスを選択してください...";
+
+            try {
+                // 1. デバイス選択プロンプト
+                const device = await navigator.usb.requestDevice({ filters: [] });
+                await device.open();
+                
+                if (device.configuration === null) {
+                    await device.selectConfiguration(1);
+                }
+
+                // 2. カーネル占有のテスト (Interface 1 の claim を試す)
+                const ifaceNum = 1;
+                await device.claimInterface(ifaceNum);
+
+                // 3. 成功した場合
+                resDiv.className = "ok";
+                resDiv.textContent = "判定: 【互換性あり (OK)】\nこの端末はUSB直結に対応しています！";
+                
+                await device.close();
+            } catch (e) {
+                // 4. 失敗・ブロックされた場合
+                resDiv.className = "ng";
+                resDiv.textContent = `判定: 【非対応 (NG)】\nエラー: ${e.message}`;
+            }
+        };
+    </script>
+</body>
+</html>
