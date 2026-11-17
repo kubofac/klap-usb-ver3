@@ -439,6 +439,8 @@ async function startUsbReadLoop() {
         }
     } catch (e) {
         console.error("USBループエラー:", e);
+        // ★ Galaxy S9のエラー内容を画面に強制表示
+        alert("USBエラー発生: " + e.name + " - " + e.message);
     } finally {
         isUsbLoopRunning = false;
         if (device && device.opened) {
