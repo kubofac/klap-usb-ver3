@@ -466,21 +466,43 @@ document.getElementById('usbGpsBtn').onclick = async function() {
             device = null;
             lastGpsDataTime = 0;
             updateGpsButtonColor();
+            alert("USBを切断しました。");
             return; 
         }
 
+        alert("デバイスを選択してください...");
         device = await navigator.usb.requestDevice({ filters: [] });
+        
         await device.open(); 
-        await device.selectConfiguration(1); 
-        await device.claimInterface(parseInt(localStorage.getItem('usb_interface')) || 1);
+        if (device.configuration === null) {
+            await device.selectConfiguration(1); 
+        }
+
+        // ★ デバイスが持っている内部情報を画面のアラートで表示する
+        let debugText = "【デバイス情報検出】\n";
+        const cfg = device.configurations[0];
+        cfg.interfaces.forEach((iface, i) => {
+            iface.alternates.forEach((alt) => {
+                debugText += `Interface ${i} (Class: ${alt.interfaceClass})\n`;
+                alt.endpoints.forEach(ep => {
+                    debugText += ` ➔ 向き:${ep.direction}, 番号:${ep.endpointNumber}, 種類:${ep.type}\n`;
+                });
+            });
+        });
+        alert(debugText);
+
+        // 設定から取得、またはデフォルト
+        const ifaceNum = parseInt(localStorage.getItem('usb_interface')) || 1;
+        await device.claimInterface(ifaceNum);
         
         if(!gpsWatchdogTimer) {
             gpsWatchdogTimer = setInterval(updateGpsButtonColor, 500);
         }
 
         startUsbReadLoop();
+        alert("受信ループを開始しました。");
     } catch (e) {
-        console.error("USB接続エラー:", e);
+        alert("USB接続エラー: " + e.message);
         device = null;
         isUsbLoopRunning = false;
     }
