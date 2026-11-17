@@ -166,20 +166,49 @@
             });
         }
 
-        // USB GPS 設定機能
-        document.getElementById('usbTestBtn').onclick = async () => {
-            try {
-                const device = await navigator.usb.requestDevice({ filters: [] });
-                await device.open();
-                localStorage.setItem('usb_interface', 1);
-                localStorage.setItem('usb_endpoint', 2);
-                document.getElementById('usbStatus').textContent = "保存成功: IF-1 / EP-2";
-                alert("USB GPS 情報を保存しました。");
-                await device.close();
-            } catch (e) { 
-                document.getElementById('usbStatus').textContent = "接続キャンセル"; 
-            }
-        };
+
+  // USB GPS 設定機能（動的エンドポイント検出対応）
+document.getElementById('usbTestBtn').onclick = async () => {
+    try {
+        const device = await navigator.usb.requestDevice({ filters: [] });
+        await device.open();
+
+        if (device.configuration === null) {
+            await device.selectConfiguration(1);
+        }
+
+        let targetInterface = 1; // デフォルト
+        let targetEndpoint = 2;  // デフォルト
+
+        // デバイスのインターフェース・エンドポイントを自動スキャン
+        const cfg = device.configurations[0];
+        let found = false;
+
+        cfg.interfaces.forEach((iface) => {
+            iface.alternates.forEach((alt) => {
+                alt.endpoints.forEach(ep => {
+                    // 受信(in)用かつバルク転送(bulk)のエンドポイントを自動検出
+                    if (ep.direction === 'in' && ep.type === 'bulk') {
+                        targetInterface = iface.interfaceNumber;
+                        targetEndpoint = ep.endpointNumber;
+                        found = true;
+                    }
+                });
+            });
+        });
+
+        // 検出結果をLocalStorageに保存
+        localStorage.setItem('usb_interface', targetInterface);
+        localStorage.setItem('usb_endpoint', targetEndpoint);
+
+        document.getElementById('usbStatus').textContent = `保存成功: IF-${targetInterface} / EP-${targetEndpoint}`;
+        alert(`USB GPS 情報を自動検出し保存しました。\n(Interface: ${targetInterface}, Endpoint: ${targetEndpoint})`);
+
+        await device.close();
+    } catch (e) { 
+        document.getElementById('usbStatus').textContent = "接続エラー/キャンセル: " + e.message; 
+    }
+};
 
         document.getElementById('btnDecide').onclick = () => {
             if (!p1Temp || !p2Temp) { alert("P1とP2の両方を設置してください。"); return; }
