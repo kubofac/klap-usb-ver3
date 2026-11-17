@@ -449,6 +449,8 @@ let isUsbLoopRunning = false;
 async function startUsbReadLoop() {
     if (isUsbLoopRunning || !device) return;
     isUsbLoopRunning = true;
+    
+    // ★ localStorageから設定された動的エンドポイントとインターフェースを確実に取得
     const endpoint = parseInt(localStorage.getItem('usb_endpoint')) || 2;
 
     try {
@@ -493,7 +495,10 @@ document.getElementById('usbGpsBtn').onclick = async function() {
         device = await navigator.usb.requestDevice({ filters: [] });
         await device.open(); 
         await device.selectConfiguration(1); 
-        await device.claimInterface(parseInt(localStorage.getItem('usb_interface')) || 1);
+        
+        // ★ 保存された動的インターフェース番号を読み込んでclaim
+        const ifaceNum = parseInt(localStorage.getItem('usb_interface')) || 1;
+        await device.claimInterface(ifaceNum);
         
         if(!gpsWatchdogTimer) {
             gpsWatchdogTimer = setInterval(updateGpsButtonColor, 500);
