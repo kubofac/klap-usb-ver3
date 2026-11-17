@@ -477,20 +477,28 @@ document.getElementById('usbGpsBtn').onclick = async function() {
             await device.selectConfiguration(1); 
         }
 
-        // Interface 1 をクレーム
+        // ★ Androidのカーネルドライバが Interface 0 や 1 を掴んでいるのを外すため、
+        // 万が一claimされている場合は一度リリースを試みる
+        try {
+            await device.releaseInterface(0);
+        } catch(e) {}
+        try {
+            await device.releaseInterface(1);
+        } catch(e) {}
+
+        // その後、データ送受信に必要な Interface 1 を取得する
         const ifaceNum = 1;
         await device.claimInterface(ifaceNum);
 
-        // ★【最重要】CDC-ACMの初期化信号（通信開始のDTRオン）を送る
+        // CDC-ACMの初期化信号（DTR = 1）を送る
         try {
             await device.controlTransferOut({
                 requestType: 'class',
                 recipient: 'interface',
                 request: 0x22, // SET_CONTROL_LINE_STATE
-                value: 0x0003, // DTR = 1, RTS = 1 (通信有効化)
+                value: 0x0003, // DTR = 1, RTS = 1
                 index: ifaceNum
             });
-            console.log("USBシリアル初期化信号を送信しました");
         } catch (ctrlErr) {
             console.warn("コントロール転送の警告:", ctrlErr);
         }
