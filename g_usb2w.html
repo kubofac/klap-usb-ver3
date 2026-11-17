@@ -470,37 +470,37 @@ document.getElementById('usbGpsBtn').onclick = async function() {
             return; 
         }
 
-        alert("デバイスを選択してください...");
         device = await navigator.usb.requestDevice({ filters: [] });
-        
         await device.open(); 
+        
         if (device.configuration === null) {
             await device.selectConfiguration(1); 
         }
 
-        // ★ デバイスが持っている内部情報を画面のアラートで表示する
-        let debugText = "【デバイス情報検出】\n";
-        const cfg = device.configurations[0];
-        cfg.interfaces.forEach((iface, i) => {
-            iface.alternates.forEach((alt) => {
-                debugText += `Interface ${i} (Class: ${alt.interfaceClass})\n`;
-                alt.endpoints.forEach(ep => {
-                    debugText += ` ➔ 向き:${ep.direction}, 番号:${ep.endpointNumber}, 種類:${ep.type}\n`;
-                });
-            });
-        });
-        alert(debugText);
-
-        // 設定から取得、またはデフォルト
-        const ifaceNum = parseInt(localStorage.getItem('usb_interface')) || 1;
+        // Interface 1 をクレーム
+        const ifaceNum = 1;
         await device.claimInterface(ifaceNum);
-        
+
+        // ★【最重要】CDC-ACMの初期化信号（通信開始のDTRオン）を送る
+        try {
+            await device.controlTransferOut({
+                requestType: 'class',
+                recipient: 'interface',
+                request: 0x22, // SET_CONTROL_LINE_STATE
+                value: 0x0003, // DTR = 1, RTS = 1 (通信有効化)
+                index: ifaceNum
+            });
+            console.log("USBシリアル初期化信号を送信しました");
+        } catch (ctrlErr) {
+            console.warn("コントロール転送の警告:", ctrlErr);
+        }
+
         if(!gpsWatchdogTimer) {
             gpsWatchdogTimer = setInterval(updateGpsButtonColor, 500);
         }
 
         startUsbReadLoop();
-        alert("受信ループを開始しました。");
+        alert("GPS接続成功！データ受信を開始します。");
     } catch (e) {
         alert("USB接続エラー: " + e.message);
         device = null;
