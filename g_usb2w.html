@@ -439,8 +439,6 @@ async function startUsbReadLoop() {
         }
     } catch (e) {
         console.error("USBループエラー:", e);
-        // ★ Galaxy S9のエラー内容を画面に強制表示
-        alert("USBエラー発生: " + e.name + " - " + e.message);
     } finally {
         isUsbLoopRunning = false;
         if (device && device.opened) {
@@ -466,51 +464,21 @@ document.getElementById('usbGpsBtn').onclick = async function() {
             device = null;
             lastGpsDataTime = 0;
             updateGpsButtonColor();
-            alert("USBを切断しました。");
             return; 
         }
 
         device = await navigator.usb.requestDevice({ filters: [] });
         await device.open(); 
+        await device.selectConfiguration(1); 
+        await device.claimInterface(parseInt(localStorage.getItem('usb_interface')) || 1);
         
-        if (device.configuration === null) {
-            await device.selectConfiguration(1); 
-        }
-
-        // ★ Androidのカーネルドライバが Interface 0 や 1 を掴んでいるのを外すため、
-        // 万が一claimされている場合は一度リリースを試みる
-        try {
-            await device.releaseInterface(0);
-        } catch(e) {}
-        try {
-            await device.releaseInterface(1);
-        } catch(e) {}
-
-        // その後、データ送受信に必要な Interface 1 を取得する
-        const ifaceNum = 1;
-        await device.claimInterface(ifaceNum);
-
-        // CDC-ACMの初期化信号（DTR = 1）を送る
-        try {
-            await device.controlTransferOut({
-                requestType: 'class',
-                recipient: 'interface',
-                request: 0x22, // SET_CONTROL_LINE_STATE
-                value: 0x0003, // DTR = 1, RTS = 1
-                index: ifaceNum
-            });
-        } catch (ctrlErr) {
-            console.warn("コントロール転送の警告:", ctrlErr);
-        }
-
         if(!gpsWatchdogTimer) {
             gpsWatchdogTimer = setInterval(updateGpsButtonColor, 500);
         }
 
         startUsbReadLoop();
-        alert("GPS接続成功！データ受信を開始します。");
     } catch (e) {
-        alert("USB接続エラー: " + e.message);
+        console.error("USB接続エラー:", e);
         device = null;
         isUsbLoopRunning = false;
     }
