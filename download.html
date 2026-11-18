@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="robots" content="noindex, nofollow">
+  <title>KLAP アプリダウンロード</title>
+  <style>
+    :root {
+      --bg-color: #0f172a;
+      --card-bg: #1e293b;
+      --text-main: #f8fafc;
+      --text-sub: #94a3b8;
+      --accent-blue: #3b82f6;
+      --accent-blue-hover: #2563eb;
+      --accent-emerald: #10b981;
+      --accent-emerald-hover: #059669;
+      --warn-bg: rgba(245, 158, 11, 0.12);
+      --warn-border: #f59e0b;
+      --warn-text: #fde68a;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Hiragino Sans", "Noto Sans JP", sans-serif;
+      background-color: var(--bg-color);
+      color: var(--text-main);
+      line-height: 1.6;
+      padding: 24px 16px 48px;
+    }
+
+    .container {
+      max-width: 540px;
+      margin: 0 auto;
+    }
+
+    header {
+      text-align: center;
+      margin-bottom: 24px;
+    }
+
+    header h1 {
+      font-size: 1.5rem;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      margin-bottom: 6px;
+    }
+
+    header p {
+      font-size: 0.875rem;
+      color: var(--text-sub);
+    }
+
+    .warning-box {
+      background-color: var(--warn-bg);
+      border: 1px solid var(--warn-border);
+      border-left: 5px solid var(--warn-border);
+      border-radius: 10px;
+      padding: 16px;
+      margin-bottom: 24px;
+    }
+
+    .warning-title {
+      font-size: 0.95rem;
+      font-weight: 700;
+      color: #fbbf24;
+      margin-bottom: 6px;
+    }
+
+    .warning-box p {
+      font-size: 0.85rem;
+      color: var(--warn-text);
+    }
+
+    .card {
+      background-color: var(--card-bg);
+      border: 1px solid #334155;
+      border-radius: 14px;
+      padding: 20px;
+      margin-bottom: 20px;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
+    }
+
+    .app-badge {
+      display: inline-block;
+      font-size: 0.75rem;
+      font-weight: 600;
+      padding: 2px 10px;
+      border-radius: 999px;
+      background-color: rgba(59, 130, 246, 0.2);
+      color: #93c5fd;
+      margin-bottom: 8px;
+    }
+
+    .app-badge.analyzer {
+      background-color: rgba(16, 185, 129, 0.2);
+      color: #6ee7b7;
+    }
+
+    .card h2 {
+      font-size: 1.15rem;
+      margin-bottom: 6px;
+    }
+
+    .card .desc {
+      font-size: 0.875rem;
+      color: var(--text-sub);
+      margin-bottom: 16px;
+    }
+
+    .btn-download {
+      display: block;
+      width: 100%;
+      padding: 14px 16px;
+      border-radius: 10px;
+      font-size: 1rem;
+      font-weight: 700;
+      text-align: center;
+      text-decoration: none;
+      color: #ffffff;
+      background-color: var(--accent-blue);
+      transition: background-color 0.2s, transform 0.1s;
+    }
+
+    .btn-download:hover {
+      background-color: var(--accent-blue-hover);
+    }
+
+    .btn-download:active {
+      transform: scale(0.98);
+    }
+
+    .btn-download.analyzer {
+      background-color: var(--accent-emerald);
+    }
+
+    .btn-download.analyzer:hover {
+      background-color: var(--accent-emerald-hover);
+    }
+
+    .file-meta {
+      margin-top: 8px;
+      font-size: 0.75rem;
+      color: var(--text-sub);
+      text-align: right;
+    }
+
+    .steps-box {
+      background-color: var(--card-bg);
+      border: 1px solid #334155;
+      border-radius: 14px;
+      padding: 20px;
+      margin-top: 24px;
+    }
+
+    .steps-box h3 {
+      font-size: 1rem;
+      margin-bottom: 12px;
+      border-bottom: 1px solid #334155;
+      padding-bottom: 8px;
+    }
+
+    .steps-list {
+      padding-left: 20px;
+      font-size: 0.85rem;
+      color: #cbd5e1;
+    }
+
+    .steps-list li {
+      margin-bottom: 10px;
+    }
+
+    .highlight {
+      color: #ffffff;
+      font-weight: 600;
+    }
+
+    footer {
+      text-align: center;
+      margin-top: 32px;
+      font-size: 0.75rem;
+      color: var(--text-sub);
+    }
+  </style>
+</head>
+<body>
+
+  <div class="container">
+    <header>
+      <h1>KLAP アプリダウンロード</h1>
+      <p>Android端末専用インストールページ</p>
+    </header>
+
+    <div class="warning-box">
+      <div class="warning-title">⚠️ インストールのセキュリティ警告について</div>
+      <p>
+        直接ダウンロードしたファイルは「有害なファイルの可能性があります」と警告が出ますが、これは公式ストア以外からのファイル全てに出る警告です。そのまま<strong>「ダウンロードを続行」</strong>を選択してください。
+      </p>
+    </div>
+
+    <!-- ① KLAP ラップタイマー -->
+    <section class="card">
+      <span class="app-badge">計測用アプリ</span>
+      <h2>KLAP GPSラップタイマー</h2>
+      <p class="desc">
+        外部GPSレシーバー（Bluetooth / USB）およびスマホ内蔵GPSに対応したサーキット計測アプリです。
+      </p>
+      <a href="/klap-laptimer.apk" class="btn-download" download>
+        ⬇ ラップタイマーをダウンロード (.apk)
+      </a>
+      <div class="file-meta">対象OS: Android / 形式: APK</div>
+    </section>
+
+    <!-- ② KLAP Analyzer -->
+    <section class="card">
+      <span class="app-badge analyzer">ログ解析用アプリ</span>
+      <h2>KLAP Analyzer</h2>
+      <p class="desc">
+        保存したGPXファイルを読み込み、走行ラインの比較・セクタータイム・最高速などを確認できる解析アプリです。
+      </p>
+      <a href="/klap-analyzer.apk" class="btn-download analyzer" download>
+        ⬇ KLAP Analyzerをダウンロード (.apk)
+      </a>
+      <div class="file-meta">対象OS: Android / 形式: APK</div>
+    </section>
+
+    <section class="steps-box">
+      <h3>インストール手順（Android）</h3>
+      <ol class="steps-list">
+        <li>上のダウンロードボタンをタップし、警告が出たら<span class="highlight">「ダウンロードを続行」</span>を選択します。</li>
+        <li>ダウンロード完了後、通知バーまたは「Files（ファイル）」アプリのダウンロードフォルダから <span class="highlight">.apkファイル</span> をタップします。</li>
+        <li>「セキュリティ上の理由から、お使いのスマホではこの提供元からの不明なアプリをインストールできません」と表示された場合は、<span class="highlight">「設定」→「この提供元のアプリを許可」をオン</span>にして戻ります。</li>
+        <li><span class="highlight">「インストール」</span>をタップすると完了です。</li>
+      </ol>
+    </section>
+
+    <footer>
+      <p>※本ページおよびファイルの無断転載・再配布は禁止いたします。</p>
+    </footer>
+  </div>
+
+</body>
+</html>
