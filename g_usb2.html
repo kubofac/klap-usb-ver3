@@ -31,25 +31,25 @@
         /* 右側パネルのラップ行：右寄せに配置を変更 */
         .lap-row { 
             display: flex; 
-            justify-content: flex-end; 
-            align-items: baseline;     
-            gap: 15px;                 
+            justify-content: flex-end; /* 右側に寄せる */
+            align-items: baseline;     /* 文字の下端を揃える */
+            gap: 15px;                 /* L番号とタイムの間隔（ここでお好みの距離に調整） */
             padding: 6px 0; 
             border-bottom: 1px solid #222; 
-            font-size: 22px;           
+            font-size: 22px;           /* 少し大きめに設定 */
         }
 
         /* L1, L2などの番号部分 */
         .lap-row span:first-child {
             color: #888;
-            font-size: 22px;           
+            font-size: 22px;           /* 番号は小さくしてタイムを引き立てる */
             font-weight: normal;
         }
 
         /* タイム部分 */
         .lap-row span:last-child {
             font-family: 'Arial Black', sans-serif;
-            min-width: 110px;          
+            min-width: 110px;          /* タイムの桁数が変わってもガタつかないように固定幅を確保 */
             text-align: right;
         }
         .best-lap { color: var(--hrc-red); font-weight: bold; }
@@ -98,7 +98,7 @@
 
     <footer>
         <button id="usbGpsBtn">USB GPS</button>
-        <button id="internalGpsBtn">INT GPS</button> <!-- ★内蔵GPS切り替えボタンを追加 -->
+        <button id="internalGpsBtn">INT GPS</button> <!-- ★内蔵GPS切り替えボタン -->
         <button id="startBtn">START</button>
         <button id="lapBtn">LAP/RESET</button>
         <button id="historyBtn">HISTORY</button>
@@ -117,8 +117,7 @@
             <th>S1</th>
             <th>S2</th>
             <th>S3</th>
-            <th>S4</th>
-            <th>TIME</th>
+            <th>S4</th> <th>TIME</th>
             <th style="color:var(--hrc-orange);">MAX</th>
         </tr>
     </thead>
@@ -138,15 +137,16 @@ let isFrozen = false, freezeDisplayTime = "00:00.000", freezeUntil = 0;
 let currentLapPoints = [];   
 let validDirection = null; 
 let sectorDirections = { s1: null, s2: null, s3: null };
-let cooldownMs = 15000;  
+let cooldownMs = 15000; // 15秒（ピットアウト直後の誤作動防止）  
 let lapCount = 1;
-let s1_abs = 0, s2_abs = 0, s3_abs = 0, s4_abs = 0;
+let s1_abs = 0, s2_abs = 0, s3_abs = 0, s4_abs = 0; // s4_absを追加
 
-let lastGpsDataTime = 0;     
-let lastGpsValidTime = 0;    
-let gpsWatchdogTimer = null; 
+// --- ボタン色管理用の変数 ---
+let lastGpsDataTime = 0;     // 最後に正しいNMEAデータ（RMC/GGA）を受信した時刻
+let lastGpsValidTime = 0;    // 最後に有効な位置情報（測位成功）を受信した時刻
+let gpsWatchdogTimer = null; // 通信途絶を監視するタイマー
 
-// --- ★追加: 内蔵GPS（Geolocation）用の変数 ---
+// --- 内蔵GPS（Geolocation）用の変数 ---
 let watchId = null;
 let isInternalGpsActive = false;
 
@@ -157,28 +157,31 @@ function parseNmeaTime(timeStr) {
     const s = parseFloat(timeStr.substring(4));
     const now = new Date();
     now.setUTCHours(h, m, 0, 0); 
-    return now.getTime() + (s * 1000); 
+    return now.getTime() + (s * 1000); // UTCから当日基準のミリ秒に変換
 }
 
+// --- ボタンの色をリアルタイム更新する関数 ---
 function updateGpsButtonColor() {
     const btn = document.getElementById('usbGpsBtn');
     const now = Date.now();
 
+    // 内蔵GPS稼働中はUSB GPSボタンの背景を通常に戻す
     if (isInternalGpsActive) {
-        // 内蔵GPS稼働中は専用の色（オレンジ等）にするなど視覚的に分かりやすくする
         btn.style.background = "#111";
         return;
     }
 
+    // 1. 通信途絶の判定：最後のNMEAデータ受信から2秒以上経過したらグレーに戻す
     if (now - lastGpsDataTime > 2000) {
         btn.style.background = "#111"; 
         return;
     }
 
+    // 2. 位置情報の判定：最後の測位成功から2秒以内なら「赤」、それ以外（位置ロス）は「オレンジ」
     if (now - lastGpsValidTime <= 2000) {
-        btn.style.background = "var(--hrc-red)";    
+        btn.style.background = "var(--hrc-red)";    // 赤（位置情報あり）
     } else {
-        btn.style.background = "var(--hrc-orange)"; 
+        btn.style.background = "var(--hrc-orange)"; // オレンジ（データ受信中・位置なし）
     }
 }  
 
@@ -191,15 +194,17 @@ function processLap(hitTime, isManual = false) {
 
      if (!isManual) {
             isFrozen = true;
-            freezeUntil = hitTime + 15000; 
+            freezeUntil = hitTime + 15000; // ★Date.now() から hitTime（GPS基準）に変更
             freezeDisplayTime = timeFormat(lapTimeMs);
         }
 
+        // --- セクター計算 ---
         const s1_text = s1_abs > 0 ? s1_abs.toFixed(3) : "--.---";
         const s2_text = (s2_abs > 0 && s1_abs > 0) ? (s2_abs - s1_abs).toFixed(3) : "--.---";
         const s3_text = (s3_abs > 0 && s2_abs > 0) ? (s3_abs - s2_abs).toFixed(3) : "--.---";
         
-       let s4_text = "--.---";
+        // --- S4の計算ロジック（柔軟な判定） ---
+        let s4_text = "--.---";
         if (s3_abs > 0) {
             s4_text = (lapTimeSec - s3_abs).toFixed(3);
         } else if (s2_abs > 0) {
@@ -225,6 +230,7 @@ function processLap(hitTime, isManual = false) {
         updateLapList();
     }
 
+    // --- 次のラップのためのリセット ---
     lapStartTime = hitTime;
     currentLapPoints = [];
     maxSpeedInLap = 0;
@@ -246,6 +252,7 @@ function mainLoop() {
     const now = Date.now();
     if (swState === 1) {
         document.getElementById('display').textContent = "TOTAL " + timeFormat(now - startTime);
+        
         const virtualGpsNow = (lastPos ? lastPos.time : 0) + (now - lastGpsValidTime);
         document.getElementById('display1').textContent = (isFrozen && virtualGpsNow < freezeUntil) ? freezeDisplayTime : timeFormat(now - (lapStartTime || startTime));
     }
@@ -254,8 +261,8 @@ function mainLoop() {
     requestAnimationFrame(mainLoop);
 }
 
-// 共通の位置データ処理・ラップ判定ロジック
-function processPosition(lat, lon, speedMs, timestamp) {
+// 共通の位置更新・ラップ判定処理（USBおよび内蔵GPS共用）
+function handlePositionUpdate(lat, lon, speedMs, timestamp) {
     lastGpsDataTime = Date.now();
     lastGpsValidTime = Date.now();
 
@@ -268,6 +275,7 @@ function processPosition(lat, lon, speedMs, timestamp) {
         currentLapPoints.push({ lat: cur.lat, lon: cur.lon, time: new Date(cur.time).toISOString(), speed: currentSpeedKmh });
             
         if (lastPos) {
+            // --- 1. スタート/コントロールライン判定 ---
             const hitSL = getIntersection(lastPos, cur, lines.startLine);
             if (hitSL) {
                 if (validDirection === null) validDirection = hitSL.dir;
@@ -276,6 +284,7 @@ function processPosition(lat, lon, speedMs, timestamp) {
                 }
             }
 
+            // --- 2. セクターライン判定 ---
             if (lapStartTime > 0) {
                 ['s1', 's2', 's3'].forEach((s) => {
                     const hit = getIntersection(lastPos, cur, lines[s + 'Line']);
@@ -304,29 +313,38 @@ function processPosition(lat, lon, speedMs, timestamp) {
     updateGpsButtonColor();
 }
 
+// 2. もともとのNMEAパース構造を復元
 function parseNMEA(line) {
     if (!line.includes('RMC') && !line.includes('GGA')) return;
+    
+    // データ受信時刻を更新
+    lastGpsDataTime = Date.now();
+    
     const p = line.split(',');
     
     if (line.includes('RMC') && p[2] === 'A') {
-        const speedMs = parseFloat(p[7]) * 0.514444; // ノットからm/sへ変換
-        // RMC単体では位置情報が含まれない場合があるためGGA側でまとめて処理する
+        currentSpeedKmh = parseFloat(p[7]) * 1.852;
+        if (currentSpeedKmh > maxSpeedInLap) maxSpeedInLap = Math.round(currentSpeedKmh);
     }
     
     if (line.includes('GGA') && (p[6] !== '0' && p[6] !== '')) {
+        lastGpsValidTime = Date.now();
+        const receiveTime = Date.now(); 
+
         const lat = dmmToDec(p[2], p[3]);
         const lon = dmmToDec(p[4], p[5]);
-        // スピードは前回のRMCから引き継ぐ形にするため簡易的にcurrentSpeedKmhを流用
-        processPosition(lat, lon, currentSpeedKmh / 3.6, Date.now());
+        
+        handlePositionUpdate(lat, lon, currentSpeedKmh / 3.6, receiveTime);
     }
+    
+    updateGpsButtonColor();
 }
 
-// --- ★追加: スマホ内蔵GPS（Geolocation API）の起動・停止ボタン処理 ---
+// --- ★追加: スマホ内蔵GPS（Geolocation API）の切り替え処理 ---
 document.getElementById('internalGpsBtn').onclick = function() {
     const intBtn = document.getElementById('internalGpsBtn');
     
     if (isInternalGpsActive) {
-        // 内蔵GPS停止
         if (watchId !== null) {
             navigator.geolocation.clearWatch(watchId);
             watchId = null;
@@ -337,10 +355,11 @@ document.getElementById('internalGpsBtn').onclick = function() {
         updateGpsButtonColor();
         alert("内蔵GPSを停止しました。");
     } else {
-        // USB接続中なら一旦切断する配慮
+        // USB接続中なら先に切断
         if (device && device.opened) {
             device.close();
             device = null;
+            isUsbLoopRunning = false;
         }
 
         if (!navigator.geolocation) {
@@ -352,20 +371,14 @@ document.getElementById('internalGpsBtn').onclick = function() {
         intBtn.classList.add('active');
         document.getElementById('usbGpsBtn').style.background = "#111";
 
-        // 高精度モードで位置情報を常時監視
         watchId = navigator.geolocation.watchPosition(
             (position) => {
                 const lat = position.coords.latitude;
                 const lon = position.coords.longitude;
-                // coords.speed は m/s (取得できない場合は0)
                 const speedMs = position.coords.speed !== null ? position.coords.speed : 0;
                 const timestamp = position.timestamp || Date.now();
 
-                // 共通のラップ・セクター判定ロジックへ流し込む
-                processPosition(lat, lon, speedMs, timestamp);
-                
-                // 内蔵GPS稼働中はボタンスタイルを赤色にしてアクティブ感を出す
-                intBtn.style.background = "var(--hrc-red)";
+                handlePositionUpdate(lat, lon, speedMs, timestamp);
             },
             (error) => {
                 console.error("内蔵GPSエラー:", error);
@@ -377,6 +390,10 @@ document.getElementById('internalGpsBtn').onclick = function() {
                 timeout: 5000
             }
         );
+        
+        if(!gpsWatchdogTimer) {
+            gpsWatchdogTimer = setInterval(updateGpsButtonColor, 500);
+        }
     }
 };
 
@@ -436,6 +453,7 @@ document.getElementById('gpxBtn').onclick = function() {
     setTimeout(() => URL.revokeObjectURL(url), 100);
 };
 
+// 1. 交点計算と方向判定（外積）を行う関数
 function getIntersection(p1, p2, line) {
     if (!line) return null;
     const x1 = p1.lon, y1 = p1.lat, x2 = p2.lon, y2 = p2.lat;
@@ -528,7 +546,7 @@ document.getElementById('usbGpsBtn').onclick = async function() {
             return; 
         }
 
-        // もし内蔵GPSが動いていたら先に止める配慮
+        // 内蔵GPSが動いていたら先に止める
         if (isInternalGpsActive) {
             document.getElementById('internalGpsBtn').click();
         }
