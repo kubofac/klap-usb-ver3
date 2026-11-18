@@ -3,64 +3,71 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>KLAP_DEGI_LAPTIMER - V12.8</title>
-  <style>
-        /* ライトモード（白背景・黒文字）用カラー定義 */
+    <title>KLAP_DEGI_LAPTIMER - V12.8 (Light Mode)</title>
+    <style>
+        /* 白背景（ライトモード）用カラー定義 */
         :root { 
             --hrc-red: #E4002B; 
-            --hrc-white: #000000; /* 文字色を黒に変更 */
-            --bg-dark: #ffffff;   /* 背景色を白に変更 */
+            --text-color: #000000; 
+            --bg-color: #ffffff; 
             --hrc-orange: #e67e22; 
+            --border-color: #d1d5db;
+            --button-bg: #f5f5f5;
         }
-        body, html { margin: 0; padding: 0; width: 100%; height: 100%; background-color: var(--bg-dark); color: var(--hrc-white); font-family: 'Arial Black', sans-serif; overflow: hidden; }
+        body, html { margin: 0; padding: 0; width: 100%; height: 100%; background-color: var(--bg-color); color: var(--text-color); font-family: 'Arial Black', sans-serif; overflow: hidden; }
         #dashboard { position: relative; width: 100vw; height: 100dvh; }
         
         /* メインUI */
         .main-ui-container { position: absolute; left: 32%; top: 42%; transform: translate(-50%, -50%); display: flex; flex-direction: column; align-items: center; z-index: 5; width: 60%; }
-        #display1 { font-size: 19vh; font-weight: 900; line-height: 0.8; white-space: nowrap; }
+        #display1 { font-size: 19vh; font-weight: 900; line-height: 0.8; white-space: nowrap; color: var(--text-color); }
 
         /* セクター表示 */
         #sector-container { display: flex; justify-content: center; gap: 25px; font-size: 6vh; font-weight: 900; margin-top: 2vh; }
         .sec-name { color: var(--hrc-red); margin-right: 6px; font-size: 2.8vh; }
+        .sec-item span:last-child { color: var(--text-color); }
 
         /* 下段情報 */
         .sub-times { display: flex; flex-direction: column; align-items: center; margin-top: 4vh; gap: 2.5vh; }
-        #display { font-size: 3.5vh; color: #444; font-weight: 900; opacity: 0.9; }
-        #best-display { font-size: 9.5vh; color: #000; font-weight: 900; line-height: 0.9; }
+        #display { font-size: 3.5vh; color: #4b5563; font-weight: 900; }
+        #best-display { font-size: 9.5vh; color: var(--text-color); font-weight: 900; line-height: 0.9; }
         .best-label { font-size: 2.2vh; color: var(--hrc-red); margin-right: 15px; vertical-align: middle; }
 
         /* 右側パネル */
         .right-section-wrapper { position: absolute; right: 10px; top: 15px; bottom: 75px; display: flex; gap: 15px; align-items: flex-start; }
         #lap-panel { width: 150px; height: 100%; display: flex; flex-direction: column; }
         #lap { flex: 1; overflow-y: auto; scrollbar-width: none; text-align: right; }
+        
         .lap-row { 
             display: flex; 
             justify-content: flex-end; 
             align-items: baseline;     
             gap: 15px;                 
             padding: 6px 0; 
-            border-bottom: 1px solid #ccc; 
+            border-bottom: 1px solid var(--border-color); 
             font-size: 22px;           
+            color: var(--text-color);
         }
-        .lap-row span:first-child { color: #666; font-size: 22px; font-weight: normal; }
+
+        .lap-row span:first-child { color: #6b7280; font-size: 22px; font-weight: normal; }
         .lap-row span:last-child { font-family: 'Arial Black', sans-serif; min-width: 110px; text-align: right; }
-        .best-lap { color: var(--hrc-red); font-weight: bold; }
+        .best-lap { color: var(--hrc-red) !important; font-weight: bold; }
+        
         .data-column { display: flex; flex-direction: column; gap: 15px; min-width: 90px; }
         .data-box { text-align: right; }
         .label { font-size: 11px; color: var(--hrc-red); font-weight: bold; }
-        .val { font-size: 42px; font-weight: 900; line-height: 0.85; }
+        .val { font-size: 42px; font-weight: 900; line-height: 0.85; color: var(--text-color); }
 
-        /* フッター・ボタン（白背景向け調整） */
-        footer { height: 60px; display: flex; gap: 2px; padding: 4px; background: #eee; border-top: 1px solid #ccc; position: fixed; bottom: 0; left: 0; right: 0; z-index: 100; }
-        button { flex: 1; background: #f5f5f5; color: #000; border: 1px solid #bbb; border-radius: 4px; font-size: 10px; font-weight: bold; }
-        button.active { background: var(--hrc-red) !important; color: #fff !important; }
+        /* フッター・ボタン */
+        footer { height: 60px; display: flex; gap: 2px; padding: 4px; background: #eee; border-top: 1px solid var(--border-color); position: fixed; bottom: 0; left: 0; right: 0; z-index: 100; }
+        button { flex: 1; background: var(--button-bg); color: var(--text-color); border: 1px solid var(--border-color); border-radius: 4px; font-size: 10px; font-weight: bold; cursor: pointer; }
+        button.active { background: var(--hrc-red) !important; color: #ffffff !important; }
 
         /* HISTORY ページ */
-        #history-page { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: #fff; color: #000; z-index: 2000; padding: 20px; box-sizing: border-box; }
-        .close-btn { background: var(--hrc-red); color: #fff; padding: 15px; text-align: center; font-weight: bold; margin-bottom: 10px; cursor: pointer; }
+        #history-page { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: var(--bg-color); color: var(--text-color); z-index: 2000; padding: 20px; box-sizing: border-box; }
+        .close-btn { background: var(--hrc-red); color: #ffffff; padding: 15px; text-align: center; font-weight: bold; margin-bottom: 10px; cursor: pointer; border-radius: 4px; }
         #history-table { width: 100%; border-collapse: collapse; text-align: center; font-size: 14px; }
         #history-table th { color: var(--hrc-red); border-bottom: 2px solid var(--hrc-red); padding: 8px; }
-        #history-table td { padding: 8px; border-bottom: 1px solid #ccc; }
+        #history-table td { padding: 8px; border-bottom: 1px solid var(--border-color); }
     </style>
 </head>
 <body>
@@ -91,11 +98,11 @@
 
     <footer>
         <button id="usbGpsBtn">USB GPS</button>
-        <button id="internalGpsBtn">INT GPS</button> <!-- ★内蔵GPS切り替えボタン -->
+        <button id="internalGpsBtn">INT GPS</button>
         <button id="startBtn">START</button>
         <button id="lapBtn">LAP/RESET</button>
         <button id="historyBtn">HISTORY</button>
-        <button id="gpxBtn" style="display:none; background:var(--hrc-orange); color:#000;">GPX SAVE</button>
+        <button id="gpxBtn" style="display:none; background:var(--hrc-orange); color:#ffffff;">GPX SAVE</button>
         <button onclick="if(confirm('RESET ALL?')) location.reload()">RELOAD</button>
     </footer>
 </div>
@@ -130,16 +137,14 @@ let isFrozen = false, freezeDisplayTime = "00:00.000", freezeUntil = 0;
 let currentLapPoints = [];   
 let validDirection = null; 
 let sectorDirections = { s1: null, s2: null, s3: null };
-let cooldownMs = 15000; // 15秒（ピットアウト直後の誤作動防止）  
+let cooldownMs = 15000;  
 let lapCount = 1;
-let s1_abs = 0, s2_abs = 0, s3_abs = 0, s4_abs = 0; // s4_absを追加
+let s1_abs = 0, s2_abs = 0, s3_abs = 0, s4_abs = 0;
 
-// --- ボタン色管理用の変数 ---
-let lastGpsDataTime = 0;     // 最後に正しいNMEAデータ（RMC/GGA）を受信した時刻
-let lastGpsValidTime = 0;    // 最後に有効な位置情報（測位成功）を受信した時刻
-let gpsWatchdogTimer = null; // 通信途絶を監視するタイマー
+let lastGpsDataTime = 0;     
+let lastGpsValidTime = 0;    
+let gpsWatchdogTimer = null; 
 
-// --- 内蔵GPS（Geolocation）用の変数 ---
 let watchId = null;
 let isInternalGpsActive = false;
 
@@ -150,31 +155,32 @@ function parseNmeaTime(timeStr) {
     const s = parseFloat(timeStr.substring(4));
     const now = new Date();
     now.setUTCHours(h, m, 0, 0); 
-    return now.getTime() + (s * 1000); // UTCから当日基準のミリ秒に変換
+    return now.getTime() + (s * 1000); 
 }
 
-// --- ボタンの色をリアルタイム更新する関数 ---
+// ★白背景用にボタンの未接続時・キャンセル時カラーを修正
 function updateGpsButtonColor() {
     const btn = document.getElementById('usbGpsBtn');
     const now = Date.now();
 
-    // 内蔵GPS稼働中はUSB GPSボタンの背景を通常に戻す
     if (isInternalGpsActive) {
-        btn.style.background = "#111";
+        btn.style.background = "var(--button-bg)";
+        btn.style.color = "var(--text-color)";
         return;
     }
 
-    // 1. 通信途絶の判定：最後のNMEAデータ受信から2秒以上経過したらグレーに戻す
     if (now - lastGpsDataTime > 2000) {
-        btn.style.background = "#111"; 
+        btn.style.background = "var(--button-bg)"; 
+        btn.style.color = "var(--text-color)";
         return;
     }
 
-    // 2. 位置情報の判定：最後の測位成功から2秒以内なら「赤」、それ以外（位置ロス）は「オレンジ」
     if (now - lastGpsValidTime <= 2000) {
-        btn.style.background = "var(--hrc-red)";    // 赤（位置情報あり）
+        btn.style.background = "var(--hrc-red)";    
+        btn.style.color = "#ffffff";
     } else {
-        btn.style.background = "var(--hrc-orange)"; // オレンジ（データ受信中・位置なし）
+        btn.style.background = "var(--hrc-orange)"; 
+        btn.style.color = "#ffffff";
     }
 }  
 
@@ -187,16 +193,14 @@ function processLap(hitTime, isManual = false) {
 
      if (!isManual) {
             isFrozen = true;
-            freezeUntil = hitTime + 15000; // ★Date.now() から hitTime（GPS基準）に変更
+            freezeUntil = hitTime + 15000; 
             freezeDisplayTime = timeFormat(lapTimeMs);
         }
 
-        // --- セクター計算 ---
         const s1_text = s1_abs > 0 ? s1_abs.toFixed(3) : "--.---";
         const s2_text = (s2_abs > 0 && s1_abs > 0) ? (s2_abs - s1_abs).toFixed(3) : "--.---";
         const s3_text = (s3_abs > 0 && s2_abs > 0) ? (s3_abs - s2_abs).toFixed(3) : "--.---";
         
-        // --- S4の計算ロジック（柔軟な判定） ---
         let s4_text = "--.---";
         if (s3_abs > 0) {
             s4_text = (lapTimeSec - s3_abs).toFixed(3);
@@ -223,7 +227,6 @@ function processLap(hitTime, isManual = false) {
         updateLapList();
     }
 
-    // --- 次のラップのためのリセット ---
     lapStartTime = hitTime;
     currentLapPoints = [];
     maxSpeedInLap = 0;
@@ -245,7 +248,6 @@ function mainLoop() {
     const now = Date.now();
     if (swState === 1) {
         document.getElementById('display').textContent = "TOTAL " + timeFormat(now - startTime);
-        
         const virtualGpsNow = (lastPos ? lastPos.time : 0) + (now - lastGpsValidTime);
         document.getElementById('display1').textContent = (isFrozen && virtualGpsNow < freezeUntil) ? freezeDisplayTime : timeFormat(now - (lapStartTime || startTime));
     }
@@ -254,7 +256,6 @@ function mainLoop() {
     requestAnimationFrame(mainLoop);
 }
 
-// 共通の位置更新・ラップ判定処理（USBおよび内蔵GPS共用）
 function handlePositionUpdate(lat, lon, speedMs, timestamp) {
     lastGpsDataTime = Date.now();
     lastGpsValidTime = Date.now();
@@ -268,7 +269,6 @@ function handlePositionUpdate(lat, lon, speedMs, timestamp) {
         currentLapPoints.push({ lat: cur.lat, lon: cur.lon, time: new Date(cur.time).toISOString(), speed: currentSpeedKmh });
             
         if (lastPos) {
-            // --- 1. スタート/コントロールライン判定 ---
             const hitSL = getIntersection(lastPos, cur, lines.startLine);
             if (hitSL) {
                 if (validDirection === null) validDirection = hitSL.dir;
@@ -277,7 +277,6 @@ function handlePositionUpdate(lat, lon, speedMs, timestamp) {
                 }
             }
 
-            // --- 2. セクターライン判定 ---
             if (lapStartTime > 0) {
                 ['s1', 's2', 's3'].forEach((s) => {
                     const hit = getIntersection(lastPos, cur, lines[s + 'Line']);
@@ -306,13 +305,10 @@ function handlePositionUpdate(lat, lon, speedMs, timestamp) {
     updateGpsButtonColor();
 }
 
-// 2. もともとのNMEAパース構造を復元
 function parseNMEA(line) {
     if (!line.includes('RMC') && !line.includes('GGA')) return;
     
-    // データ受信時刻を更新
     lastGpsDataTime = Date.now();
-    
     const p = line.split(',');
     
     if (line.includes('RMC') && p[2] === 'A') {
@@ -333,7 +329,6 @@ function parseNMEA(line) {
     updateGpsButtonColor();
 }
 
-// --- ★追加: スマホ内蔵GPS（Geolocation API）の切り替え処理 ---
 document.getElementById('internalGpsBtn').onclick = function() {
     const intBtn = document.getElementById('internalGpsBtn');
     
@@ -344,11 +339,12 @@ document.getElementById('internalGpsBtn').onclick = function() {
         }
         isInternalGpsActive = false;
         intBtn.classList.remove('active');
+        intBtn.style.background = "var(--button-bg)";
+        intBtn.style.color = "var(--text-color)";
         lastGpsDataTime = 0;
         updateGpsButtonColor();
         alert("内蔵GPSを停止しました。");
     } else {
-        // USB接続中なら先に切断
         if (device && device.opened) {
             device.close();
             device = null;
@@ -362,7 +358,11 @@ document.getElementById('internalGpsBtn').onclick = function() {
 
         isInternalGpsActive = true;
         intBtn.classList.add('active');
-        document.getElementById('usbGpsBtn').style.background = "#111";
+        
+        // USB GPS側のボタン背景をリセット
+        const usbBtn = document.getElementById('usbGpsBtn');
+        usbBtn.style.background = "var(--button-bg)";
+        usbBtn.style.color = "var(--text-color)";
 
         watchId = navigator.geolocation.watchPosition(
             (position) => {
@@ -372,6 +372,8 @@ document.getElementById('internalGpsBtn').onclick = function() {
                 const timestamp = position.timestamp || Date.now();
 
                 handlePositionUpdate(lat, lon, speedMs, timestamp);
+                intBtn.style.background = "var(--hrc-red)";
+                intBtn.style.color = "#ffffff";
             },
             (error) => {
                 console.error("内蔵GPSエラー:", error);
@@ -446,7 +448,6 @@ document.getElementById('gpxBtn').onclick = function() {
     setTimeout(() => URL.revokeObjectURL(url), 100);
 };
 
-// 1. 交点計算と方向判定（外積）を行う関数
 function getIntersection(p1, p2, line) {
     if (!line) return null;
     const x1 = p1.lon, y1 = p1.lat, x2 = p2.lon, y2 = p2.lat;
@@ -539,7 +540,6 @@ document.getElementById('usbGpsBtn').onclick = async function() {
             return; 
         }
 
-        // 内蔵GPSが動いていたら先に止める
         if (isInternalGpsActive) {
             document.getElementById('internalGpsBtn').click();
         }
@@ -560,6 +560,9 @@ document.getElementById('usbGpsBtn').onclick = async function() {
         console.error("USB接続エラー:", e);
         device = null;
         isUsbLoopRunning = false;
+        // キャンセル時などにボタンが白背景用に正しく戻るようにする
+        lastGpsDataTime = 0;
+        updateGpsButtonColor();
     }
 };
 
