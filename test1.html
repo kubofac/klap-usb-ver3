@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>WebSerial テスト</title>
+</head>
+<body>
+  <button id="btnSerial">WebSerial 接続テスト</button>
+  <pre id="log" style="white-space: pre-wrap; background: #111; color: #0f0; padding: 12px;"></pre>
+
+  <script>
+    const logEl = document.getElementById('log');
+    const log = (msg) => { logEl.textContent += msg + '\n'; };
+
+    document.getElementById('btnSerial').onclick = async () => {
+      logEl.textContent = '';
+      if (!('serial' in navigator)) {
+        log('NG: このブラウザは navigator.serial (WebSerial) に非対応です。');
+        return;
+      }
+
+      try {
+        log('ポートを選択してください...');
+        const port = await navigator.serial.requestPort();
+        await port.open({ baudRate: 9600 });
+        log('OK: ポートを開きました。受信待機中...');
+
+        const decoder = new TextDecoder();
+        const reader = port.readable.getReader();
+
+        while (true) {
+          const { value, done } = await reader.read();
+          if (done) break;
+          if (value) {
+            logEl.textContent += decoder.decode(value, { stream: true });
+          }
+        }
+      } catch (e) {
+        log('エラー: ' + e.name + ' / ' + e.message);
+      }
+    };
+  </script>
+</body>
+</html>
